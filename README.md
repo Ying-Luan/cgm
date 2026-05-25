@@ -7,6 +7,8 @@ A lightweight GPU job scheduler
 [![GitHub License](https://img.shields.io/github/license/Ying-Luan/cgm)](LICENSE)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/8853a13a90ac4417b70c544c297655ac)](https://app.codacy.com/gh/Ying-Luan/cgm/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
+[GitHub](https://github.com/Ying-Luan/cgm) | [Gitee](https://gitee.com/ying_luan/cgm)
+
 [English](README.md) | [中文](README_zh.md)
 
 </div>
@@ -86,6 +88,8 @@ cgm/
 ## Installation
 
 ### Build from Source
+
+> Users in China may use the Gitee mirror: `git clone https://gitee.com/ying_luan/cgm.git`
 
 Method 1: Use `make`
 

@@ -9,6 +9,8 @@
 
 [English](README.md) | [中文](README_zh.md)
 
+[GitHub](https://github.com/Ying-Luan/cgm) | [Gitee](https://gitee.com/ying_luan/cgm)
+
 </div>
 
 ---
@@ -86,6 +88,8 @@ cgm/
 ## 安装
 
 ### 从源码构建
+
+> 国内用户可使用 Gitee 镜像：`git clone https://gitee.com/ying_luan/cgm.git`
 
 方式一：使用 `make`
 
