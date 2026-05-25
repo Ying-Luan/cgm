@@ -313,16 +313,27 @@ impl Server {
             DeleteTarget::Single(id) => self.delete_single(id),
             DeleteTarget::ByStatuses(statuses) => self.delete_by_statuses(statuses),
             DeleteTarget::AllTerminated => self.delete_all_terminated(),
-        }
-        .and_then(|ids| {
-            self.queue
-                .lock()
-                .unwrap()
-                .delete_jobs(&ids)
-                .map_err(|e| e.to_string())
-        });
+        };
 
-        match result {
+        // delete log files
+        let ids = match result {
+            Ok((ids, log_paths)) => {
+                for path in &log_paths {
+                    let _ = fs::remove_file(path);
+                }
+                ids
+            }
+            Err(e) => return Response::Error { message: e },
+        };
+
+        // delete database records
+        match self
+            .queue
+            .lock()
+            .unwrap()
+            .delete_jobs(&ids)
+            .map_err(|e| e.to_string())
+        {
             Ok(count) => Response::Delete { count },
             Err(e) => Response::Error { message: e },
         }
@@ -338,8 +349,8 @@ impl Server {
     ///
     /// # Returns
     ///
-    /// `Ok(vec![id])` if the job can be deleted, `Err` with error message if not found or not in deletable status
-    fn delete_single(&self, id: usize) -> Result<Vec<usize>, String> {
+    /// `Ok((vec![id], vec![log_path]))` if the job can be deleted
+    fn delete_single(&self, id: usize) -> Result<(Vec<usize>, Vec<String>), String> {
         let q = self.queue.lock().unwrap();
         match q.get_job_by_id(id) {
             Ok(Some(job)) => {
@@ -354,7 +365,7 @@ impl Server {
                     ));
                 }
 
-                Ok(vec![id])
+                Ok((vec![id], vec![job.log_path]))
             }
             Ok(None) => Err(format!("Failed to find job {}", id)),
             Err(e) => Err(format!("Failed to query job: {}", e)),
@@ -371,8 +382,11 @@ impl Server {
     ///
     /// # Returns
     ///
-    /// `Ok(vec![ids])` if jobs can be deleted, `Err` with error message if any status is not deletable or query fails
-    fn delete_by_statuses(&self, statuses: Vec<JobStatus>) -> Result<Vec<usize>, String> {
+    /// `Ok((ids, log_paths))` if jobs can be deleted
+    fn delete_by_statuses(
+        &self,
+        statuses: Vec<JobStatus>,
+    ) -> Result<(Vec<usize>, Vec<String>), String> {
         let allowed = |s: &JobStatus| {
             matches!(
                 s,
@@ -385,7 +399,11 @@ impl Server {
 
         let q = self.queue.lock().unwrap();
         q.get_jobs_by_statuses(&statuses)
-            .map(|jobs| jobs.into_iter().map(|j| j.id).collect())
+            .map(|jobs| {
+                let ids: Vec<usize> = jobs.iter().map(|j| j.id).collect();
+                let paths: Vec<String> = jobs.iter().map(|j| j.log_path.clone()).collect();
+                (ids, paths)
+            })
             .map_err(|e| format!("Failed to query jobs: {}", e))
     }
 
@@ -393,8 +411,8 @@ impl Server {
     ///
     /// # Returns
     ///
-    /// `Ok(vec![ids])` if jobs can be deleted, `Err` with error message if query fails
-    fn delete_all_terminated(&self) -> Result<Vec<usize>, String> {
+    /// `Ok((ids, log_paths))` if jobs can be deleted
+    fn delete_all_terminated(&self) -> Result<(Vec<usize>, Vec<String>), String> {
         let q = self.queue.lock().unwrap();
         let statuses = vec![
             JobStatus::Completed,
@@ -402,7 +420,11 @@ impl Server {
             JobStatus::Cancelled,
         ];
         q.get_jobs_by_statuses(&statuses)
-            .map(|jobs| jobs.into_iter().map(|j| j.id).collect())
+            .map(|jobs| {
+                let ids: Vec<usize> = jobs.iter().map(|j| j.id).collect();
+                let paths: Vec<String> = jobs.iter().map(|j| j.log_path.clone()).collect();
+                (ids, paths)
+            })
             .map_err(|e| format!("Failed to query jobs: {}", e))
     }
 
