@@ -95,6 +95,8 @@ cgm/
 
 ### Install a Prebuilt Release (Recommended)
 
+> Users in China can use the Gitee mirror: `curl --proto '=https' --tlsv1.2 -LsSf https://raw.giteeusercontent.com/ying_luan/cgm/raw/master/install.sh | CGM_MIRROR=gitee bash`
+
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/Ying-Luan/cgm/master/install.sh | bash
 ```

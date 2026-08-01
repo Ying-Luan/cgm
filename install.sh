@@ -3,9 +3,12 @@
 set -euo pipefail
 
 BINARY_NAME="cgm"
+GITEE_REPOSITORY="ying_luan/cgm"
 GITHUB_REPOSITORY="Ying-Luan/cgm"
 INSTALL_DIR="/usr/local/bin"
 TARGET="x86_64-unknown-linux-gnu"
+
+mirror="${CGM_MIRROR:-github}"
 
 die() {
     printf 'Error: %s\n' "$*" >&2
@@ -48,13 +51,31 @@ fi
 
 archive_name="$BINARY_NAME-$TARGET.tar.xz"
 checksum_name="$archive_name.sha256"
-release_url="https://github.com/$GITHUB_REPOSITORY/releases/latest/download"
 
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "$temp_dir"' EXIT
 
+case "$mirror" in
+    gitee)
+        release_metadata="$(download "https://gitee.com/api/v5/repos/$GITEE_REPOSITORY/releases/latest" /dev/stdout)" \
+            || die "Failed to query latest Gitee release"
+        if [[ "$release_metadata" =~ \"tag_name\":\"([^\"]+)\" ]]; then
+            release_tag="${BASH_REMATCH[1]}"
+        else
+            die "Failed to resolve latest Gitee release"
+        fi
+        release_url="https://gitee.com/$GITEE_REPOSITORY/releases/download/$release_tag"
+        ;;
+    github)
+        release_url="https://github.com/$GITHUB_REPOSITORY/releases/latest/download"
+        ;;
+    *)
+        die "Unsupported mirror: $mirror"
+        ;;
+esac
+
 # Download the release archive and checksum
-printf 'Downloading %s...\n' "$archive_name"
+printf 'Downloading %s from %s...\n' "$archive_name" "$mirror"
 download "$release_url/$archive_name" "$temp_dir/$archive_name" \
     || die "Failed to download release archive"
 download "$release_url/$checksum_name" "$temp_dir/$checksum_name" \

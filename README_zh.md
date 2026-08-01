@@ -95,6 +95,8 @@ cgm/
 
 ### 安装预编译版本（推荐）
 
+> 国内用户可使用 Gitee 镜像：`curl --proto '=https' --tlsv1.2 -LsSf https://raw.giteeusercontent.com/ying_luan/cgm/raw/master/install.sh | CGM_MIRROR=gitee bash`
+
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/Ying-Luan/cgm/master/install.sh | bash
 ```
