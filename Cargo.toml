@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2024"
 description = "Convenient GPU Manager"
 license = "MIT"
+homepage = "https://github.com/Ying-Luan/cgm"
 repository = "https://github.com/Ying-Luan/cgm"
 readme = "README.md"
 authors = ["Ying Luan"]
+keywords = ["gpu", "rust", "scheduler"]
 
 [dependencies]
 clap = { version = "4.6.0", features = ["derive"] }
@@ -22,3 +24,8 @@ time = { version = "0.3.47", features = [
     "local-offset",
     "macros",
 ] }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

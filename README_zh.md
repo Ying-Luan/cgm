@@ -28,6 +28,9 @@
 
 ```text
 cgm/
+├── .github/
+│   └── workflows/
+│       └── release.yml
 ├── src/
 │   ├── cli.rs               # CLI 模块入口，定义命令结构
 │   ├── cli/
@@ -70,6 +73,8 @@ cgm/
 ├── .gitignore
 ├── Cargo.lock
 ├── Cargo.toml
+├── dist-workspace.toml
+├── install.sh
 ├── LICENSE
 ├── Makefile
 ├── README_zh.md
@@ -87,6 +92,12 @@ cgm/
 * `make`（仅使用 make 安装时需要）
 
 ## 安装
+
+### 安装预编译版本（推荐）
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/Ying-Luan/cgm/master/install.sh | bash
+```
 
 ### 从源码构建
 

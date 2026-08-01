@@ -28,6 +28,9 @@ A lightweight GPU job scheduler
 
 ```text
 cgm/
+├── .github/
+│   └── workflows/
+│       └── release.yml
 ├── src/
 │   ├── cli.rs               # CLI module entry, defines command structure
 │   ├── cli/
@@ -70,6 +73,8 @@ cgm/
 ├── .gitignore
 ├── Cargo.lock
 ├── Cargo.toml
+├── dist-workspace.toml
+├── install.sh
 ├── LICENSE
 ├── Makefile
 ├── README_zh.md
@@ -87,6 +92,12 @@ cgm/
 * `make` (only for using make install)
 
 ## Installation
+
+### Install a Prebuilt Release (Recommended)
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/Ying-Luan/cgm/master/install.sh | bash
+```
 
 ### Build from Source
 
