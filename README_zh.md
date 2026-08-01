@@ -35,6 +35,7 @@ cgm/
 │   │   ├── delete.rs        # cgm delete
 │   │   ├── list.rs          # cgm list
 │   │   ├── log.rs           # cgm log
+│   │   ├── rerun.rs         # cgm rerun
 │   │   ├── start.rs         # cgm start
 │   │   ├── status.rs        # cgm status
 │   │   ├── stop.rs          # cgm stop
@@ -118,6 +119,7 @@ sudo chmod +x /usr/local/bin/cgm
 ```bash
 sudo cgm start                           # 启动守护进程
 cgm submit -g 1 -- python main.py        # 提交任务
+cgm rerun 1 -e                           # 使用当前环境重新运行任务
 cgm list                                 # 列出任务
 cgm log 1                                # 查看日志
 cgm cancel 1                             # 取消任务

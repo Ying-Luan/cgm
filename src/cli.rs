@@ -6,6 +6,7 @@ mod cancel;
 mod delete;
 mod list;
 mod log;
+mod rerun;
 mod start;
 mod status;
 mod stop;
@@ -89,7 +90,12 @@ enum Commands {
     /// Submit job
     Submit {
         /// Detach mode. Opens less to follow log after submission
-        #[arg(short, long, default_value = "false", help = "Detach mode")]
+        #[arg(
+            short,
+            long,
+            default_value = "false",
+            help = "Detach mode. Opens less to follow log after submission"
+        )]
         detach: bool,
         /// Number of GPUs to request
         #[arg(short, long, default_value = "1", help = "Number of GPUs to request")]
@@ -100,6 +106,34 @@ enum Commands {
         /// Command to execute
         #[arg(last = true, required = true, help = "Command to execute")]
         command: Vec<String>,
+    },
+    /// Rerun an existing job as a new job
+    Rerun {
+        /// Source job ID
+        #[arg(help = "Source job ID")]
+        id: usize,
+        /// Use current environment instead of saved environment
+        #[arg(
+            short = 'e',
+            long,
+            default_value = "false",
+            help = "Use current environment instead of saved environment"
+        )]
+        current_env: bool,
+        /// Enable detach mode. Do not open the log viewer after submission
+        #[arg(
+            short,
+            long,
+            default_value = "false",
+            help = "Enable detach mode. Do not open the log viewer after submission"
+        )]
+        detach: bool,
+        /// Override number of GPUs
+        #[arg(short, long, help = "Override number of GPUs")]
+        gpus: Option<usize>,
+        /// Set the new job's log path
+        #[arg(short, long, help = "Set the new job's log path")]
+        log: Option<String>,
     },
     /// Cancel job
     Cancel {
@@ -183,6 +217,13 @@ pub(crate) fn run() {
             log,
             command,
         } => submit::run(detach, gpus, log, command),
+        Commands::Rerun {
+            id,
+            current_env,
+            detach,
+            gpus,
+            log,
+        } => rerun::run(id, current_env, detach, gpus, log),
         Commands::Cancel { id, force } => cancel::run(id, force),
         Commands::Delete { id, all, status } => delete::run(id, all, status),
         Commands::Status => status::run(),

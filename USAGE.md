@@ -14,6 +14,7 @@
 * [Stop Daemon](#stop-daemon)
 * [Submit Job](#submit-job)
   * [Regarding Environment Variable Expansion](#regarding-environment-variable-expansion)
+* [Rerun Job](#rerun-job)
 * [Cancel Job](#cancel-job)
 * [Delete Job](#delete-job)
 * [View Status](#view-status)
@@ -79,6 +80,19 @@ cgm submit -- echo '$CUDA_VISIBLE_DEVICES'
 ```
 
 Single quotes prevent shell parsing, so `$CUDA_VISIBLE_DEVICES` is passed literally to `cgm` and expanded by the job's shell.
+
+## Rerun Job
+
+```bash
+cgm rerun <JOB_ID> [options]
+```
+
+| Option | Short | Default | Description |
+| ------ | ----- | ------- | ----------- |
+| `--current-env` | `-e` | `false` | Replace the saved environment with the current environment |
+| `--detach` | `-d` | `false` | Enable detach mode. Do not open the log viewer after submission |
+| `--gpus <N>` | `-g <N>` | ` ` | Override the number of GPUs for the new job |
+| `--log <PATH>` | `-l <PATH>` | ` ` | Set the new job's log path |
 
 ## Cancel Job
 

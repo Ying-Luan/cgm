@@ -7,9 +7,9 @@ A lightweight GPU job scheduler
 [![GitHub License](https://img.shields.io/github/license/Ying-Luan/cgm)](LICENSE)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/8853a13a90ac4417b70c544c297655ac)](https://app.codacy.com/gh/Ying-Luan/cgm/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
-[GitHub](https://github.com/Ying-Luan/cgm) | [Gitee](https://gitee.com/ying_luan/cgm)
-
 [English](README.md) | [中文](README_zh.md)
+
+[GitHub](https://github.com/Ying-Luan/cgm) | [Gitee](https://gitee.com/ying_luan/cgm)
 
 </div>
 
@@ -35,6 +35,7 @@ cgm/
 │   │   ├── delete.rs        # cgm delete
 │   │   ├── list.rs          # cgm list
 │   │   ├── log.rs           # cgm log
+│   │   ├── rerun.rs         # cgm rerun
 │   │   ├── start.rs         # cgm start
 │   │   ├── status.rs        # cgm status
 │   │   ├── stop.rs          # cgm stop
@@ -118,6 +119,7 @@ Quick Reference for Common Commands:
 ```bash
 sudo cgm start                           # Start daemon
 cgm submit -g 1 -- python main.py        # Submit job
+cgm rerun 1 -e                           # Rerun job with current environment
 cgm list                                 # List jobs
 cgm log 1                                # View log
 cgm cancel 1                             # Cancel job

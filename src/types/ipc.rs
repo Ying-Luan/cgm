@@ -2,6 +2,8 @@
 //!
 //! Defines delete target, request and response structures for daemon IPC communication.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::types::{
@@ -29,6 +31,19 @@ pub(crate) enum Request {
     Submit {
         /// Job request data
         job: JobRequest,
+    },
+    /// Rerun job request
+    Rerun {
+        /// Source job ID
+        id: usize,
+        /// Optional current environment snapshot
+        envs: Option<HashMap<String, String>>,
+        /// Optional GPU count override
+        gpus: Option<usize>,
+        /// Optional log path override
+        log_path: Option<String>,
+        /// Requesting username
+        username: String,
     },
     /// Cancel job request
     Cancel {
@@ -75,6 +90,13 @@ pub(crate) enum Response {
         /// Job ID
         id: usize,
         /// Log file path
+        log_path: String,
+    },
+    /// Rerun job success response
+    Rerun {
+        /// New job ID
+        id: usize,
+        /// New job log path
         log_path: String,
     },
     /// Cancel job response

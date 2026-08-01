@@ -2,7 +2,7 @@
 //!
 //! Communicate with daemon via Unix Domain Socket, submit jobs and query GPU status.
 
-use std::{io::Write, os::unix::net::UnixStream};
+use std::{collections::HashMap, io::Write, os::unix::net::UnixStream};
 
 use crate::{
     constants::SOCKET_PATH,
@@ -61,6 +61,38 @@ pub(crate) fn check_stop() -> Result<usize, String> {
 pub(crate) fn submit_job(request: JobRequest) -> Result<(usize, String), String> {
     match send_request(&Request::Submit { job: request })? {
         Response::Submit { id, log_path } => Ok((id, log_path)),
+        Response::Error { message } => Err(message),
+        _ => Err("Unexpected response".to_string()),
+    }
+}
+
+/// Rerun an existing job as a new job
+///
+/// # Arguments
+///
+/// * `id` - Source job ID
+/// * `envs` - Optional current environment snapshot
+/// * `gpus` - Optional GPU count override
+/// * `log_path` - Optional log path override
+///
+/// # Returns
+///
+/// * `(usize, String)` - New job ID and log path on success
+/// * `String` - Error message on failure
+pub(crate) fn rerun_job(
+    id: usize,
+    envs: Option<HashMap<String, String>>,
+    gpus: Option<usize>,
+    log_path: Option<String>,
+) -> Result<(usize, String), String> {
+    match send_request(&Request::Rerun {
+        id,
+        envs,
+        gpus,
+        log_path,
+        username: get_current_username(),
+    })? {
+        Response::Rerun { id, log_path } => Ok((id, log_path)),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
     }

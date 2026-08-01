@@ -3,6 +3,7 @@
 //! Listen on Unix Domain Socket, receive and handle client requests.
 
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::Read,
     os::unix::{
@@ -119,6 +120,13 @@ impl Server {
         match req {
             Request::StopCheck => self.handle_stop_check(),
             Request::Submit { job } => self.handle_submit(job),
+            Request::Rerun {
+                id,
+                envs,
+                gpus,
+                log_path,
+                username,
+            } => self.handle_rerun(id, envs, gpus, log_path, &username),
             Request::Cancel {
                 id,
                 username,
@@ -161,22 +169,78 @@ impl Server {
     ///
     /// Response containing assigned job ID and log file path, or error message on failure.
     fn handle_submit(&self, req: JobRequest) -> Response {
+        match self.create_job(req) {
+            Ok((id, log_path)) => Response::Submit { id, log_path },
+            Err(message) => Response::Error { message },
+        }
+    }
+
+    /// Handle job rerun request
+    ///
+    /// Creates a new job from an existing job, preserving the source job.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Source job ID
+    /// * `envs` - Optional current environment snapshot
+    /// * `gpus` - Optional GPU count override
+    /// * `log_path` - Optional log path override
+    /// * `username` - User requesting the rerun
+    ///
+    /// # Returns
+    ///
+    /// Response containing the new job ID and log path, or an error message.
+    fn handle_rerun(
+        &self,
+        id: usize,
+        envs: Option<HashMap<String, String>>,
+        gpus: Option<usize>,
+        log_path: Option<String>,
+        username: &str,
+    ) -> Response {
+        let job = match self.get_job_with_permission(id, username) {
+            Ok(job) => job,
+            Err(message) => return Response::Error { message },
+        };
+
+        if envs.is_some() && username == "root" && job.username != "root" {
+            return Response::Error {
+                message: "Cannot use root's current environment for another user's job".to_string(),
+            };
+        }
+
+        let request = JobRequest {
+            username: job.username,
+            command: job.command,
+            gpus: gpus.unwrap_or(job.gpus),
+            envs: envs.unwrap_or(job.envs),
+            log_path,
+            cwd: job.cwd,
+        };
+
+        match self.create_job(request) {
+            Ok((id, log_path)) => Response::Rerun { id, log_path },
+            Err(message) => Response::Error { message },
+        }
+    }
+
+    /// Create and persist a new job
+    ///
+    /// # Arguments
+    ///
+    /// * `req` - Job request containing command, GPU count, environment, etc.
+    ///
+    /// # Returns
+    ///
+    /// New job ID and log path on success, or an error message on failure.
+    fn create_job(&self, req: JobRequest) -> Result<(usize, String), String> {
         let q = self.queue.lock().unwrap();
         let job = Job::from_request(q.get_max_id().unwrap_or(0) + 1, req);
 
-        if let Err(e) = self.prepare_log_file(&job.log_path, &job.username) {
-            return Response::Error { message: e };
-        }
+        self.prepare_log_file(&job.log_path, &job.username)?;
 
-        match q.insert_job(&job) {
-            Ok(_) => Response::Submit {
-                id: job.id,
-                log_path: job.log_path.clone(),
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        }
+        q.insert_job(&job).map_err(|e| e.to_string())?;
+        Ok((job.id, job.log_path))
     }
 
     /// Prepare log file for a new job
@@ -240,7 +304,10 @@ impl Server {
                         .ok();
                     Response::Cancel
                 }
-                JobStatus::Running if force => self.force_cancel_running(id),
+                JobStatus::Running if force => match self.force_cancel_running(id) {
+                    Ok(()) => Response::Cancel,
+                    Err(message) => Response::Error { message },
+                },
                 JobStatus::Running => Response::Error {
                     message: "Job is running, requires --force".to_string(),
                 },
@@ -248,7 +315,7 @@ impl Server {
                     message: "Job has ended, cannot cancel".to_string(),
                 },
             },
-            Err(resp) => resp,
+            Err(message) => Response::Error { message },
         }
     }
 
@@ -262,38 +329,36 @@ impl Server {
     ///
     /// # Returns
     ///
-    /// Response indicating success of cancellation or error message on failure
-    fn force_cancel_running(&self, id: usize) -> Response {
+    /// Success or error message on failure
+    fn force_cancel_running(&self, id: usize) -> Result<(), String> {
         let pid = self.gpu_pool.lock().unwrap().get_first_pid_by_job_id(id);
         if let Some(pid) = pid
             && let Err(e) = kill_process(pid)
         {
             eprintln!("{}", red!("Failed to kill process: {}", e));
-            Response::Error {
-                message: "Failed to kill process".to_string(),
-            }
-        } else {
-            self.queue
-                .lock()
-                .unwrap()
-                .update_status(id, JobStatus::Cancelled)
-                .ok();
-            let gpus_to_release = self
-                .gpu_pool
-                .lock()
-                .unwrap()
-                .get_all_status()
-                .iter()
-                .filter(|g| g.job_id == Some(id))
-                .map(|g| g.id)
-                .collect::<Vec<_>>();
-            self.gpu_pool
-                .lock()
-                .unwrap()
-                .release_batch(&gpus_to_release);
-
-            Response::Cancel
+            return Err("Failed to kill process".to_string());
         }
+
+        self.queue
+            .lock()
+            .unwrap()
+            .update_status(id, JobStatus::Cancelled)
+            .ok();
+        let gpus_to_release = self
+            .gpu_pool
+            .lock()
+            .unwrap()
+            .get_all_status()
+            .iter()
+            .filter(|g| g.job_id == Some(id))
+            .map(|g| g.id)
+            .collect::<Vec<_>>();
+        self.gpu_pool
+            .lock()
+            .unwrap()
+            .release_batch(&gpus_to_release);
+
+        Ok(())
     }
 
     /// Handle job deletion request
@@ -496,7 +561,7 @@ impl Server {
             Ok(job) => Response::Log {
                 log_path: job.log_path,
             },
-            Err(resp) => resp,
+            Err(message) => Response::Error { message },
         }
     }
 
@@ -510,26 +575,20 @@ impl Server {
     /// # Returns
     ///
     /// Job if found and user has permission (root or job owner).
-    fn get_job_with_permission(&self, id: usize, username: &str) -> Result<Job, Response> {
+    fn get_job_with_permission(&self, id: usize, username: &str) -> Result<Job, String> {
         match self.queue.lock().unwrap().get_job_by_id(id) {
             Ok(Some(job)) => {
                 if username != "root" && username != job.username {
-                    Err(Response::Error {
-                        message: format!(
-                            "Permission denied: job {} belongs to user '{}'",
-                            id, job.username
-                        ),
-                    })
+                    Err(format!(
+                        "Permission denied: job {} belongs to user '{}'",
+                        id, job.username
+                    ))
                 } else {
                     Ok(job)
                 }
             }
-            Ok(None) => Err(Response::Error {
-                message: format!("Job {} not found", id),
-            }),
-            Err(e) => Err(Response::Error {
-                message: format!("Database error: {}", e),
-            }),
+            Ok(None) => Err(format!("Job {} not found", id)),
+            Err(e) => Err(format!("Database error: {}", e)),
         }
     }
 }
