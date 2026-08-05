@@ -50,7 +50,7 @@ cgm/
 │   ├── config/
 │   │   ├── load.rs          # 配置读取与合并
 │   │   ├── manage.rs        # 配置管理
-│   │   ├── path.rs          # 配置路径与作用域
+│   │   ├── path.rs          # 配置路径解析
 │   │   └── validate.rs      # 配置校验
 │   ├── constants.rs         # 全局常量
 │   ├── daemon.rs            # 守护进程入口
@@ -74,7 +74,7 @@ cgm/
 │   ├── os.rs                # 用户信息与权限检查
 │   ├── types.rs             # 类型模块入口
 │   └── types/
-│       ├── config.rs        # 配置数据类型
+│       ├── config.rs        # 配置类型、作用域与来源
 │       ├── gpu.rs           # GpuInfo、GpuState
 │       ├── ipc.rs           # IPC 消息类型
 │       ├── job.rs           # Job、JobStatus

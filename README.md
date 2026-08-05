@@ -50,7 +50,7 @@ cgm/
 │   ├── config/
 │   │   ├── load.rs          # Configuration loading and merging
 │   │   ├── manage.rs        # Configuration management
-│   │   ├── path.rs          # Configuration path and scope
+│   │   ├── path.rs          # Configuration path resolution
 │   │   └── validate.rs      # Configuration validation
 │   ├── constants.rs         # Global constants
 │   ├── daemon.rs            # Daemon module entry
@@ -74,7 +74,7 @@ cgm/
 │   ├── os.rs                # User info and permission checks
 │   ├── types.rs             # Types module entry
 │   └── types/
-│       ├── config.rs        # Configuration data types
+│       ├── config.rs        # Configuration types, scope, and source
 │       ├── gpu.rs           # GpuInfo, GpuState
 │       ├── ipc.rs           # IPC message types
 │       ├── job.rs           # Job, JobStatus
