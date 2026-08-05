@@ -6,25 +6,23 @@ use std::process;
 
 use crate::{
     client::check_stop,
-    daemon::{is_daemon_running, stop_daemon},
-    macros::{green, red, yellow},
+    daemon::stop_daemon,
+    macros::{green, yellow},
     os::require_root,
 };
+
+use super::utils::{exit_with_error, require_daemon};
 
 /// Stop daemon
 ///
 /// # Arguments
 ///
 /// * `force` - Force stop, ignores running jobs
-pub(crate) fn run(force: bool) {
+pub(super) fn run(force: bool) {
     // Only root user can stop daemon
     require_root();
 
-    // Check if daemon is running
-    if !is_daemon_running() {
-        println!("{}", yellow!("Daemon is not running."));
-        return;
-    }
+    require_daemon();
 
     // If --force not specified, check for running jobs
     if !force {
@@ -40,15 +38,12 @@ pub(crate) fn run(force: bool) {
                 process::exit(1);
             }
             Ok(_) => {}
-            Err(e) => {
-                eprintln!("{}", red!("Failed to check running jobs: {}", e));
-                process::exit(1);
-            }
+            Err(e) => exit_with_error(&format!("Failed to check running jobs: {}", e)),
         }
     }
 
     match stop_daemon() {
         Ok(pid) => println!("{}", green!("Daemon (PID {}) stopped.", pid)),
-        Err(e) => eprintln!("{}", red!("Failed to stop daemon: {}", e)),
+        Err(e) => exit_with_error(&format!("Failed to stop daemon: {}", e)),
     }
 }

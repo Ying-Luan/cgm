@@ -23,3 +23,5 @@ pub(crate) const JOB_LOG_FOLDER: &str = concat!(cgm_dir!(), "/logs");
 pub(crate) const CGM_OUT_PATH: &str = concat!(cgm_dir!(), "/cgm.out");
 /// Standard error log path
 pub(crate) const CGM_ERR_PATH: &str = concat!(cgm_dir!(), "/cgm.err");
+/// System-wide configuration path
+pub(crate) const GLOBAL_CONFIG_PATH: &str = "/etc/cgm/config.toml";

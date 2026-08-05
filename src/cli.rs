@@ -3,6 +3,7 @@
 //! Supports start, stop, submit, status and other subcommands.
 
 mod cancel;
+mod config;
 mod delete;
 mod list;
 mod log;
@@ -11,6 +12,7 @@ mod start;
 mod status;
 mod stop;
 mod submit;
+mod utils;
 
 use clap::{Parser, Subcommand};
 
@@ -47,34 +49,30 @@ enum Commands {
         #[arg(
             short,
             long,
-            default_value = "all",
-            help = "GPU list to manage, comma-separated (e.g. 0,1,2,3) or all for all GPUs"
+            help = "GPU list to manage, comma-separated (e.g. 0,1,2,3) or all for all GPUs; defaults to config or all"
         )]
-        gpus: String,
+        gpus: Option<String>,
         /// Scheduling interval in seconds
         #[arg(
             short,
             long,
-            default_value = "10",
-            help = "Scheduling interval in seconds"
+            help = "Scheduling interval in seconds; defaults to config or 10"
         )]
-        interval: u32,
+        interval: Option<u32>,
         /// Scheduler strategy. Options: greedy, fifo
         #[arg(
             short,
             long,
-            default_value = "greedy",
-            help = "Scheduler strategy. Options: greedy, fifo"
+            help = "Scheduler strategy. Options: greedy, fifo; defaults to config or greedy"
         )]
-        scheduler: SchedulerKind,
+        scheduler: Option<SchedulerKind>,
         /// GPU memory threshold (%), above this value considered externally occupied
         #[arg(
             short,
             long,
-            default_value = "10",
-            help = "GPU memory threshold (%), above this value considered externally occupied"
+            help = "GPU memory threshold (%), above this value considered externally occupied; defaults to config or 10"
         )]
-        threshold: u32,
+        threshold: Option<u32>,
     },
     /// Stop daemon
     Stop {
@@ -93,13 +91,25 @@ enum Commands {
         #[arg(
             short,
             long,
-            default_value = "false",
+            conflicts_with = "follow",
             help = "Detach mode. Opens less to follow log after submission"
         )]
         detach: bool,
+        /// Follow mode. Opens less to follow the job log after submission
+        #[arg(
+            short,
+            long,
+            conflicts_with = "detach",
+            help = "Follow mode. Opens less to follow the job log after submission"
+        )]
+        follow: bool,
         /// Number of GPUs to request
-        #[arg(short, long, default_value = "1", help = "Number of GPUs to request")]
-        gpus: usize,
+        #[arg(
+            short,
+            long,
+            help = "Number of GPUs to request; defaults to config or 1"
+        )]
+        gpus: Option<usize>,
         /// Log file path
         #[arg(short, long, help = "Log file path")]
         log: Option<String>,
@@ -124,10 +134,18 @@ enum Commands {
         #[arg(
             short,
             long,
-            default_value = "false",
+            conflicts_with = "follow",
             help = "Enable detach mode. Do not open the log viewer after submission"
         )]
         detach: bool,
+        /// Open less to follow the new job log
+        #[arg(
+            short,
+            long,
+            conflicts_with = "detach",
+            help = "Open less to follow the new job log"
+        )]
+        follow: bool,
         /// Override number of GPUs
         #[arg(short, long, help = "Override number of GPUs")]
         gpus: Option<usize>,
@@ -184,17 +202,22 @@ enum Commands {
         #[arg(
             short,
             long,
-            default_value = "20",
-            help = "Show the latest N jobs",
+            help = "Show the latest N jobs; defaults to config or 20",
             conflicts_with = "all"
         )]
-        limit: usize,
+        limit: Option<usize>,
     },
     /// View job log
     Log {
         /// Job ID
         #[arg(help = "Job ID")]
         id: usize,
+    },
+    /// Manage persistent configuration
+    Config {
+        /// Configuration operation
+        #[command(subcommand)]
+        command: config::ConfigCommand,
     },
 }
 
@@ -212,22 +235,61 @@ pub(crate) fn run() {
         } => start::run(force, gpus, interval, scheduler, threshold),
         Commands::Stop { force } => stop::run(force),
         Commands::Submit {
+            command,
             detach,
+            follow,
             gpus,
             log,
-            command,
-        } => submit::run(detach, gpus, log, command),
+        } => submit::run(command, detach, follow, gpus, log),
         Commands::Rerun {
             id,
             current_env,
             detach,
+            follow,
             gpus,
             log,
-        } => rerun::run(id, current_env, detach, gpus, log),
+        } => rerun::run(id, current_env, detach, follow, gpus, log),
         Commands::Cancel { id, force } => cancel::run(id, force),
         Commands::Delete { id, all, status } => delete::run(id, all, status),
         Commands::Status => status::run(),
         Commands::List { all, limit } => list::run(all, limit),
         Commands::Log { id } => log::run(id),
+        Commands::Config { command } => config::run(command),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::{Cli, Commands};
+
+    #[test]
+    fn configurable_arguments_preserve_explicit_values() {
+        let cli = Cli::try_parse_from(["cgm", "start", "--interval", "5", "--scheduler", "fifo"])
+            .unwrap();
+        let Commands::Start {
+            force,
+            gpus,
+            interval,
+            scheduler,
+            threshold,
+        } = cli.command
+        else {
+            panic!("expected start command");
+        };
+        assert_eq!(force, false);
+        assert!(gpus.is_none());
+        assert_eq!(interval, Some(5));
+        assert_eq!(scheduler, Some(crate::types::SchedulerKind::Fifo));
+        assert!(threshold.is_none());
+    }
+
+    #[test]
+    fn detach_and_follow_conflict() {
+        assert!(
+            Cli::try_parse_from(["cgm", "submit", "--detach", "--follow", "--", "true"]).is_err()
+        );
+        assert!(Cli::try_parse_from(["cgm", "rerun", "1", "--detach", "--follow"]).is_err());
     }
 }

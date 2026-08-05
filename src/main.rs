@@ -7,6 +7,7 @@
 
 mod cli;
 mod client;
+mod config;
 mod constants;
 mod daemon;
 mod db;

@@ -2,13 +2,9 @@
 //!
 //! Send cancel request to daemon.
 
-use std::process::exit;
+use crate::{cli::utils::require_daemon, client::cancel_job, macros::green};
 
-use crate::{
-    client::cancel_job,
-    daemon::is_daemon_running,
-    macros::{green, red, yellow},
-};
+use super::utils::exit_with_error;
 
 /// Cancel job
 ///
@@ -16,15 +12,11 @@ use crate::{
 ///
 /// * `id` - Job ID
 /// * `force` - Force cancel running job
-pub(crate) fn run(id: usize, force: bool) {
-    // Check if daemon is running
-    if !is_daemon_running() {
-        println!("{}", yellow!("Daemon is not running."));
-        exit(1);
-    }
+pub(super) fn run(id: usize, force: bool) {
+    require_daemon();
 
     match cancel_job(id, force) {
         Ok(()) => println!("{}", green!("Job canceled successfully.")),
-        Err(e) => eprintln!("{}", red!("Failed to cancel job: {}", e)),
+        Err(e) => exit_with_error(&format!("Failed to cancel job: {}", e)),
     }
 }

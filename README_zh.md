@@ -35,6 +35,7 @@ cgm/
 │   ├── cli.rs               # CLI 模块入口，定义命令结构
 │   ├── cli/
 │   │   ├── cancel.rs        # cgm cancel
+│   │   ├── config.rs        # cgm config
 │   │   ├── delete.rs        # cgm delete
 │   │   ├── list.rs          # cgm list
 │   │   ├── log.rs           # cgm log
@@ -42,8 +43,15 @@ cgm/
 │   │   ├── start.rs         # cgm start
 │   │   ├── status.rs        # cgm status
 │   │   ├── stop.rs          # cgm stop
-│   │   └── submit.rs        # cgm submit
+│   │   ├── submit.rs        # cgm submit
+│   │   └── utils.rs         # CLI 公共工具
 │   ├── client.rs            # 客户端通信
+│   ├── config.rs            # 配置模块入口
+│   ├── config/
+│   │   ├── load.rs          # 配置读取与合并
+│   │   ├── manage.rs        # 配置管理
+│   │   ├── path.rs          # 配置路径与作用域
+│   │   └── validate.rs      # 配置校验
 │   ├── constants.rs         # 全局常量
 │   ├── daemon.rs            # 守护进程入口
 │   ├── daemon/
@@ -66,6 +74,7 @@ cgm/
 │   ├── os.rs                # 用户信息与权限检查
 │   ├── types.rs             # 类型模块入口
 │   └── types/
+│       ├── config.rs        # 配置数据类型
 │       ├── gpu.rs           # GpuInfo、GpuState
 │       ├── ipc.rs           # IPC 消息类型
 │       ├── job.rs           # Job、JobStatus
@@ -131,6 +140,7 @@ sudo chmod +x /usr/local/bin/cgm
 
 ```bash
 sudo cgm start                           # 启动守护进程
+cgm config set submit.detach true        # 设置持久默认值
 cgm submit -g 1 -- python main.py        # 提交任务
 cgm rerun 1 -e                           # 使用当前环境重新运行任务
 cgm list                                 # 列出任务

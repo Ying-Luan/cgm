@@ -2,17 +2,13 @@
 //!
 //! Call monitor module to display GPU status.
 
-use std::process::exit;
+use crate::monitor::show_status;
 
-use crate::{daemon::is_daemon_running, macros::yellow, monitor::show_status};
+use super::utils::require_daemon;
 
 /// View GPU status
-pub(crate) fn run() {
-    // Check if daemon is running
-    if !is_daemon_running() {
-        println!("{}", yellow!("Daemon is not running."));
-        exit(1);
-    }
+pub(super) fn run() {
+    require_daemon();
 
     show_status()
 }

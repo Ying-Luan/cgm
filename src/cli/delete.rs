@@ -2,15 +2,14 @@
 //!
 //! Delete records of completed/failed/cancelled jobs.
 
-use std::process::exit;
-
 use crate::{
     client::delete_job,
-    daemon::is_daemon_running,
-    macros::{green, red, yellow},
+    macros::green,
     os::require_root,
     types::{DeleteTarget, JobStatus},
 };
+
+use super::utils::{exit_with_error, require_daemon};
 
 /// Delete job
 ///
@@ -19,15 +18,11 @@ use crate::{
 /// * `id` - Job ID (optional)
 /// * `all` - Delete all terminated jobs
 /// * `status` - Delete by status (comma-separated)
-pub(crate) fn run(id: Option<usize>, all: bool, status: Option<String>) {
+pub(super) fn run(id: Option<usize>, all: bool, status: Option<String>) {
     // Only root user can delete jobs
     require_root();
 
-    // Check if daemon is running
-    if !is_daemon_running() {
-        println!("{}", yellow!("Daemon is not running."));
-        exit(1);
-    }
+    require_daemon();
 
     // Determine delete target based on arguments
     let target = match (id, all, status) {
@@ -50,6 +45,6 @@ pub(crate) fn run(id: Option<usize>, all: bool, status: Option<String>) {
 
     match delete_job(target) {
         Ok(count) => println!("{}", green!("Deleted {} job(s) successfully.", count)),
-        Err(e) => eprintln!("{}", red!("Failed to delete job(s): {}", e)),
+        Err(e) => exit_with_error(&format!("Failed to delete job(s): {}", e)),
     }
 }

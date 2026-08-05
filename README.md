@@ -35,6 +35,7 @@ cgm/
 │   ├── cli.rs               # CLI module entry, defines command structure
 │   ├── cli/
 │   │   ├── cancel.rs        # cgm cancel
+│   │   ├── config.rs        # cgm config
 │   │   ├── delete.rs        # cgm delete
 │   │   ├── list.rs          # cgm list
 │   │   ├── log.rs           # cgm log
@@ -42,8 +43,15 @@ cgm/
 │   │   ├── start.rs         # cgm start
 │   │   ├── status.rs        # cgm status
 │   │   ├── stop.rs          # cgm stop
-│   │   └── submit.rs        # cgm submit
+│   │   ├── submit.rs        # cgm submit
+│   │   └── utils.rs         # CLI shared helpers
 │   ├── client.rs            # Socket client for daemon communication
+│   ├── config.rs            # Configuration module entry
+│   ├── config/
+│   │   ├── load.rs          # Configuration loading and merging
+│   │   ├── manage.rs        # Configuration management
+│   │   ├── path.rs          # Configuration path and scope
+│   │   └── validate.rs      # Configuration validation
 │   ├── constants.rs         # Global constants
 │   ├── daemon.rs            # Daemon module entry
 │   ├── daemon/
@@ -66,6 +74,7 @@ cgm/
 │   ├── os.rs                # User info and permission checks
 │   ├── types.rs             # Types module entry
 │   └── types/
+│       ├── config.rs        # Configuration data types
 │       ├── gpu.rs           # GpuInfo, GpuState
 │       ├── ipc.rs           # IPC message types
 │       ├── job.rs           # Job, JobStatus
@@ -131,6 +140,7 @@ Quick Reference for Common Commands:
 
 ```bash
 sudo cgm start                           # Start daemon
+cgm config set submit.detach true        # Set a persistent default
 cgm submit -g 1 -- python main.py        # Submit job
 cgm rerun 1 -e                           # Rerun job with current environment
 cgm list                                 # List jobs
