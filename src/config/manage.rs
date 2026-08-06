@@ -44,65 +44,33 @@ enum ConfigKey {
 }
 
 impl ConfigKey {
-    /// Get the section and field names of this key.
-    ///
-    /// # Returns
-    ///
-    /// (section, field)
-    fn names(&self) -> (&'static str, &'static str) {
-        match self {
-            Self::ListLimit => ("list", "limit"),
-            Self::RerunDetach => ("rerun", "detach"),
-            Self::StartGpus => ("start", "gpus"),
-            Self::StartInterval => ("start", "interval"),
-            Self::StartScheduler => ("start", "scheduler"),
-            Self::StartThreshold => ("start", "threshold"),
-            Self::SubmitDetach => ("submit", "detach"),
-            Self::SubmitGpus => ("submit", "gpus"),
-        }
-    }
+    /// All known configuration keys in display order.
+    const ALL: [ConfigKey; 8] = [
+        ConfigKey::StartGpus,
+        ConfigKey::StartInterval,
+        ConfigKey::StartScheduler,
+        ConfigKey::StartThreshold,
+        ConfigKey::SubmitDetach,
+        ConfigKey::SubmitGpus,
+        ConfigKey::RerunDetach,
+        ConfigKey::ListLimit,
+    ];
 
-    /// Get the dotted key string.
+    /// Get the section, field, and dotted key string of this key.
     ///
     /// # Returns
     ///
-    /// The dotted key string.
-    fn key_string(&self) -> &'static str {
+    /// (section, field, key_string)
+    fn names(&self) -> (&'static str, &'static str, &'static str) {
         match self {
-            Self::ListLimit => "list.limit",
-            Self::RerunDetach => "rerun.detach",
-            Self::StartGpus => "start.gpus",
-            Self::StartInterval => "start.interval",
-            Self::StartScheduler => "start.scheduler",
-            Self::StartThreshold => "start.threshold",
-            Self::SubmitDetach => "submit.detach",
-            Self::SubmitGpus => "submit.gpus",
-        }
-    }
-
-    /// Check whether this key is explicitly set in the given raw configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The raw configuration to check.
-    ///
-    /// # Returns
-    ///
-    /// Whether the key is explicitly set in the configuration.
-    fn is_set_in(&self, config: &Config) -> bool {
-        match self {
-            Self::ListLimit => config.list.as_ref().and_then(|l| l.limit).is_some(),
-            Self::RerunDetach => config.rerun.as_ref().and_then(|r| r.detach).is_some(),
-            Self::StartGpus => config
-                .start
-                .as_ref()
-                .and_then(|s| s.gpus.as_ref())
-                .is_some(),
-            Self::StartInterval => config.start.as_ref().and_then(|s| s.interval).is_some(),
-            Self::StartScheduler => config.start.as_ref().and_then(|s| s.scheduler).is_some(),
-            Self::StartThreshold => config.start.as_ref().and_then(|s| s.threshold).is_some(),
-            Self::SubmitDetach => config.submit.as_ref().and_then(|s| s.detach).is_some(),
-            Self::SubmitGpus => config.submit.as_ref().and_then(|s| s.gpus).is_some(),
+            Self::ListLimit => ("list", "limit", "list.limit"),
+            Self::RerunDetach => ("rerun", "detach", "rerun.detach"),
+            Self::StartGpus => ("start", "gpus", "start.gpus"),
+            Self::StartInterval => ("start", "interval", "start.interval"),
+            Self::StartScheduler => ("start", "scheduler", "start.scheduler"),
+            Self::StartThreshold => ("start", "threshold", "start.threshold"),
+            Self::SubmitDetach => ("submit", "detach", "submit.detach"),
+            Self::SubmitGpus => ("submit", "gpus", "submit.gpus"),
         }
     }
 
@@ -117,7 +85,7 @@ impl ConfigKey {
     ///
     /// Whether the operation was successful or not.
     fn set(&self, document: &mut DocumentMut, raw_value: &str) -> Result<(), String> {
-        let (section, field) = self.names();
+        let (section, field, _) = self.names();
         if document.get(section).is_none() {
             document[section] = table();
         } else if !document[section].is_table_like() {
@@ -166,25 +134,25 @@ impl ConfigKey {
         Ok(())
     }
 
-    /// Get this key's value from an effective configuration.
+    /// Get this key's value and source from an effective configuration.
     ///
     /// # Arguments
     ///
-    /// * `config` - The effective configuration from which to retrieve the value.
+    /// * `config` - The effective configuration from which to retrieve the value and source.
     ///
     /// # Returns
     ///
-    /// The value of the configuration key.
-    fn get(&self, config: &EffectiveConfig) -> String {
+    /// The value and source of the configuration key.
+    fn get(&self, config: &EffectiveConfig) -> (String, Source) {
         match self {
-            Self::ListLimit => config.list.limit.value.to_string(),
-            Self::RerunDetach => config.rerun.detach.value.to_string(),
-            Self::StartGpus => config.start.gpus.value.clone(),
-            Self::StartInterval => config.start.interval.value.to_string(),
-            Self::StartScheduler => config.start.scheduler.value.to_string(),
-            Self::StartThreshold => config.start.threshold.value.to_string(),
-            Self::SubmitDetach => config.submit.detach.value.to_string(),
-            Self::SubmitGpus => config.submit.gpus.value.to_string(),
+            Self::ListLimit => config.list.limit.value_and_source(),
+            Self::RerunDetach => config.rerun.detach.value_and_source(),
+            Self::StartGpus => config.start.gpus.value_and_source(),
+            Self::StartInterval => config.start.interval.value_and_source(),
+            Self::StartScheduler => config.start.scheduler.value_and_source(),
+            Self::StartThreshold => config.start.threshold.value_and_source(),
+            Self::SubmitDetach => config.submit.detach.value_and_source(),
+            Self::SubmitGpus => config.submit.gpus.value_and_source(),
         }
     }
 
@@ -207,28 +175,6 @@ impl ConfigKey {
             Self::StartThreshold => config.start.as_ref()?.threshold.map(|v| v.to_string()),
             Self::SubmitDetach => config.submit.as_ref()?.detach.map(|v| v.to_string()),
             Self::SubmitGpus => config.submit.as_ref()?.gpus.map(|v| v.to_string()),
-        }
-    }
-
-    /// Get the source of this key from an effective configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The effective configuration from which to retrieve the source.
-    ///
-    /// # Returns
-    ///
-    /// The source of the configuration key.
-    fn get_source(&self, config: &EffectiveConfig) -> Source {
-        match self {
-            Self::ListLimit => config.list.limit.source,
-            Self::RerunDetach => config.rerun.detach.source,
-            Self::StartGpus => config.start.gpus.source,
-            Self::StartInterval => config.start.interval.source,
-            Self::StartScheduler => config.start.scheduler.source,
-            Self::StartThreshold => config.start.threshold.source,
-            Self::SubmitDetach => config.submit.detach.source,
-            Self::SubmitGpus => config.submit.gpus.source,
         }
     }
 
@@ -367,10 +313,8 @@ pub(crate) fn get(
         return Ok(String::new());
     }
 
-    let effective = load_effective()?;
-    let mut value = key.get(&effective);
+    let (mut value, src) = key.get(&load_effective()?);
     if source {
-        let src = key.get_source(&effective);
         value.push_str(&format!(" # {}", src));
     }
 
@@ -395,7 +339,7 @@ pub(crate) fn show(effective: bool, scope: ConfigScope, source: bool) -> Result<
     } else {
         None
     };
-    let all_keys = ALL_KEYS.iter().copied();
+    let all_keys = ConfigKey::ALL.iter().copied();
 
     let mut table = Table::new();
     table.load_preset(NOTHING);
@@ -407,28 +351,21 @@ pub(crate) fn show(effective: bool, scope: ConfigScope, source: bool) -> Result<
     }
 
     for key in all_keys {
-        if !effective {
-            match raw {
-                Some(ref r) if key.is_set_in(r) => {}
-                _ => continue,
+        let (value, src) = if !effective {
+            match key.raw_value(raw.as_ref().unwrap()) {
+                Some(v) => (v, None),
+                None => continue,
             }
-        }
-
-        let value = if !effective {
-            key.raw_value(raw.as_ref().unwrap()).unwrap_or_default()
         } else {
-            key.get(&config)
+            let (v, s) = key.get(&config);
+            (v, Some(s))
         };
 
         if source {
-            let src = if effective {
-                key.get_source(&config)
-            } else {
-                Source::from(scope)
-            };
-            table.add_row(vec![key.key_string(), &value, &src.to_string()]);
+            let src = src.unwrap_or_else(|| Source::from(scope));
+            table.add_row(vec![key.names().2, &value, &src.to_string()]);
         } else {
-            table.add_row(vec![key.key_string(), &value]);
+            table.add_row(vec![key.names().2, &value]);
         }
     }
 
@@ -515,7 +452,7 @@ fn unset_at(key: &ConfigKey, path: &Path, scope: ConfigScope) -> Result<bool, St
     let mut document = content
         .parse::<DocumentMut>()
         .map_err(|error| format!("Failed to parse config {}: {}", path.display(), error))?;
-    let (section, field) = key.names();
+    let (section, field, _) = key.names();
     if document
         .get(section)
         .is_some_and(|item| !item.is_table_like())
@@ -543,18 +480,6 @@ fn unset_at(key: &ConfigKey, path: &Path, scope: ConfigScope) -> Result<bool, St
 
     Ok(removed)
 }
-
-/// All known configuration keys in display order.
-const ALL_KEYS: [ConfigKey; 8] = [
-    ConfigKey::StartGpus,
-    ConfigKey::StartInterval,
-    ConfigKey::StartScheduler,
-    ConfigKey::StartThreshold,
-    ConfigKey::SubmitDetach,
-    ConfigKey::SubmitGpus,
-    ConfigKey::RerunDetach,
-    ConfigKey::ListLimit,
-];
 
 /// Reject keys that cannot be written in the selected scope.
 ///

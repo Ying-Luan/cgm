@@ -202,6 +202,17 @@ impl<T> WithSource<T> {
     }
 }
 
+impl<T: fmt::Display> WithSource<T> {
+    /// Get the value and source.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the value as a string and its source.
+    pub(crate) fn value_and_source(&self) -> (String, Source) {
+        (self.value.to_string(), self.source)
+    }
+}
+
 impl<T: PartialEq> PartialEq for WithSource<T> {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value
