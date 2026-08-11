@@ -15,6 +15,7 @@ use crate::{
     macros::{green, yellow},
     os::require_root,
     types::{EffectiveStartConfig, SchedulerKind},
+    utils::parse_comma_separated_ids,
 };
 
 use super::utils::exit_with_error;
@@ -74,11 +75,10 @@ pub(super) fn run(
         if config.gpus.value == "all" {
             (0..device_count).collect()
         } else {
-            config
-                .gpus
-                .value
-                .split(',')
-                .filter_map(|s| s.trim().parse().ok())
+            parse_comma_separated_ids(Some(&config.gpus.value))
+                .unwrap_or_else(|error| exit_with_error(&error))
+                .unwrap_or_default()
+                .into_iter()
                 .filter(|&id| id < device_count)
                 .collect()
         }

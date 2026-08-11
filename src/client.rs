@@ -72,7 +72,9 @@ pub(crate) fn submit_job(request: JobRequest) -> Result<(usize, String), String>
 ///
 /// * `id` - Source job ID
 /// * `envs` - Optional current environment snapshot
-/// * `gpus` - Optional GPU count override
+/// * `allowed_gpus` - Optional allowed GPU ID override
+/// * `dependencies` - Optional dependency override
+/// * `required_gpus` - Optional required GPU count override
 /// * `log_path` - Optional log path override
 ///
 /// # Returns
@@ -82,13 +84,17 @@ pub(crate) fn submit_job(request: JobRequest) -> Result<(usize, String), String>
 pub(crate) fn rerun_job(
     id: usize,
     envs: Option<HashMap<String, String>>,
-    gpus: Option<usize>,
+    allowed_gpus: Option<Vec<usize>>,
+    dependencies: Option<Vec<usize>>,
+    required_gpus: Option<usize>,
     log_path: Option<String>,
 ) -> Result<(usize, String), String> {
     match send_request(&Request::Rerun {
         id,
         envs,
-        gpus,
+        allowed_gpus,
+        dependencies,
+        required_gpus,
         log_path,
         username: get_current_username(),
     })? {

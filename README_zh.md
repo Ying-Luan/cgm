@@ -73,12 +73,13 @@ cgm/
 │   ├── monitor.rs           # 状态展示（show_status、show_list）
 │   ├── os.rs                # 用户信息与权限检查
 │   ├── types.rs             # 类型模块入口
-│   └── types/
-│       ├── config.rs        # 配置类型、作用域与来源
-│       ├── gpu.rs           # GpuInfo、GpuState
-│       ├── ipc.rs           # IPC 消息类型
-│       ├── job.rs           # Job、JobStatus
-│       └── scheduler.rs     # 调度器类型定义
+│   ├── types/
+│   │   ├── config.rs        # 配置类型、作用域与来源
+│   │   ├── gpu.rs           # GpuInfo、GpuState
+│   │   ├── ipc.rs           # IPC 消息类型
+│   │   ├── job.rs           # Job、JobStatus
+│   │   └── scheduler.rs     # 调度器类型定义
+│   └── utils.rs             # 共享工具函数
 ├── .gitignore
 ├── Cargo.lock
 ├── Cargo.toml

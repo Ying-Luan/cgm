@@ -8,6 +8,7 @@ use crate::{
     macros::green,
     os::open_log_with_less,
     types::EffectiveRerunConfig,
+    utils::parse_comma_separated_ids,
 };
 
 use super::utils::{exit_with_error, require_daemon};
@@ -17,28 +18,36 @@ use super::utils::{exit_with_error, require_daemon};
 /// # Arguments
 ///
 /// * `id` - Source job ID
+/// * `allow_gpus` - Optional comma-separated GPU IDs this job may use
 /// * `current_env` - Use the current environment instead of the saved environment
+/// * `depends_on` - Optional comma-separated prerequisite job IDs
 /// * `detach` - Detach flag, returns immediately after submission
 /// * `follow` - Follow flag, opens less to follow the new job log
-/// * `gpus` - Optional GPU count override
 /// * `log` - Optional log path override
+/// * `require_gpus` - Optional GPU count override
 pub(super) fn run(
     id: usize,
+    allow_gpus: Option<String>,
     current_env: bool,
+    depends_on: Option<String>,
     detach: bool,
     follow: bool,
-    gpus: Option<usize>,
     log: Option<String>,
+    require_gpus: Option<usize>,
 ) {
     require_daemon();
 
-    if gpus == Some(0) {
-        exit_with_error("rerun.gpus must be greater than 0");
+    if require_gpus == Some(0) {
+        exit_with_error("required-gpus must be greater than 0");
     }
     let config = merge_config(detach, follow).unwrap_or_else(|error| exit_with_error(&error));
+    let allowed_gpus = parse_comma_separated_ids(allow_gpus.as_deref())
+        .unwrap_or_else(|error| exit_with_error(&error));
+    let dependencies = parse_comma_separated_ids(depends_on.as_deref())
+        .unwrap_or_else(|error| exit_with_error(&error));
 
     let envs = current_env.then(|| std::env::vars().collect());
-    match rerun_job(id, envs, gpus, log) {
+    match rerun_job(id, envs, allowed_gpus, dependencies, require_gpus, log) {
         Ok((id, log_path)) => {
             println!(
                 "{}",

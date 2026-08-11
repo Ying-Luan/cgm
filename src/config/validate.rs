@@ -1,6 +1,9 @@
 //! Configuration value and scope validation.
 
-use crate::types::{Config, ConfigScope, EffectiveConfig};
+use crate::{
+    types::{Config, ConfigScope, EffectiveConfig},
+    utils::parse_comma_separated_ids,
+};
 
 /// Validate a fully merged configuration.
 ///
@@ -19,8 +22,8 @@ pub(crate) fn validate_effective(config: &EffectiveConfig) -> Result<(), String>
     if config.start.threshold.value > 100 {
         return Err("start.threshold must be between 0 and 100".to_string());
     }
-    if config.submit.gpus.value == 0 {
-        return Err("submit.gpus must be greater than 0".to_string());
+    if config.submit.required_gpus.value == 0 {
+        return Err("submit.required_gpus must be greater than 0".to_string());
     }
     if config.list.limit.value == 0 {
         return Err("list.limit must be greater than 0".to_string());
@@ -54,8 +57,13 @@ pub(super) fn validate_config(config: &Config, scope: ConfigScope) -> Result<(),
             return Err("start.threshold must be between 0 and 100".to_string());
         }
     }
-    if config.submit.as_ref().and_then(|submit| submit.gpus) == Some(0) {
-        return Err("submit.gpus must be greater than 0".to_string());
+    if config
+        .submit
+        .as_ref()
+        .and_then(|submit| submit.required_gpus)
+        == Some(0)
+    {
+        return Err("submit.required_gpus must be greater than 0".to_string());
     }
     if config.list.as_ref().and_then(|list| list.limit) == Some(0) {
         return Err("list.limit must be greater than 0".to_string());
@@ -74,14 +82,10 @@ pub(super) fn validate_config(config: &Config, scope: ConfigScope) -> Result<(),
 ///
 /// * Whether the GPU selection is valid or not.
 fn validate_gpus(gpus: &str) -> Result<(), String> {
-    if gpus == "all"
-        || (!gpus.is_empty()
-            && gpus
-                .split(',')
-                .all(|value| value.trim().parse::<usize>().is_ok()))
-    {
-        Ok(())
-    } else {
-        Err("start.gpus must be 'all' or a comma-separated list of GPU IDs".to_string())
+    if gpus == "all" {
+        return Ok(());
     }
+    parse_comma_separated_ids(Some(gpus))
+        .map(|_| ())
+        .map_err(|error| format!("Invalid start.gpus: {}", error))
 }

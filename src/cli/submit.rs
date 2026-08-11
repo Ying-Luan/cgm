@@ -8,6 +8,7 @@ use crate::{
     macros::green,
     os::{get_current_username, open_log_with_less},
     types::{EffectiveSubmitConfig, JobRequest},
+    utils::parse_comma_separated_ids,
 };
 
 use super::utils::{exit_with_error, require_daemon};
@@ -16,26 +17,45 @@ use super::utils::{exit_with_error, require_daemon};
 ///
 /// # Arguments
 ///
+/// * `allow_gpus` - Optional comma-separated GPU IDs this job may use
 /// * `command` - Command to execute and arguments
+/// * `depends_on` - Optional comma-separated prerequisite job IDs
 /// * `detach` - Detach flag, returns immediately after submission
 /// * `follow` - Follow flag, opens less to follow the job log
-/// * `gpus` - Optional number of GPUs to request
 /// * `log` - Optional log file path
+/// * `require_gpus` - Optional number of GPUs to request
 pub(super) fn run(
+    allow_gpus: Option<String>,
     command: Vec<String>,
+    depends_on: Option<String>,
     detach: bool,
     follow: bool,
-    gpus: Option<usize>,
     log: Option<String>,
+    require_gpus: Option<usize>,
 ) {
     require_daemon();
 
-    let config = merge_config(detach, follow, gpus).unwrap_or_else(|error| exit_with_error(&error));
+    let config =
+        merge_config(detach, follow, require_gpus).unwrap_or_else(|error| exit_with_error(&error));
+    let allowed_gpus = parse_comma_separated_ids(allow_gpus.as_deref())
+        .unwrap_or_else(|error| exit_with_error(&error));
+    let dependencies = parse_comma_separated_ids(depends_on.as_deref())
+        .unwrap_or_else(|error| exit_with_error(&error))
+        .unwrap_or_default();
+
+    if allowed_gpus
+        .as_ref()
+        .is_some_and(|allowed_gpus| config.required_gpus.value > allowed_gpus.len())
+    {
+        exit_with_error("require-gpus cannot exceed the number of allowed GPUs");
+    }
 
     let request = JobRequest {
         username: get_current_username(),
+        allowed_gpus,
         command,
-        gpus: config.gpus.value,
+        dependencies,
+        required_gpus: config.required_gpus.value,
         envs: std::env::vars().collect(),
         log_path: log,
         cwd: std::env::current_dir()
@@ -65,7 +85,7 @@ pub(super) fn run(
 ///
 /// * `detach` - Detach flag from CLI
 /// * `follow` - Follow flag from CLI
-/// * `gpus` - Optional number of GPUs from CLI
+/// * `require_gpus` - Optional number of GPUs from CLI
 ///
 /// # Returns
 ///
@@ -73,7 +93,7 @@ pub(super) fn run(
 fn merge_config(
     detach: bool,
     follow: bool,
-    gpus: Option<usize>,
+    require_gpus: Option<usize>,
 ) -> Result<EffectiveSubmitConfig, String> {
     let mut config = load_effective()?;
     if detach {
@@ -81,8 +101,8 @@ fn merge_config(
     } else if follow {
         config.submit.detach.value = false;
     }
-    if let Some(gpus) = gpus {
-        config.submit.gpus.value = gpus;
+    if let Some(require_gpus) = require_gpus {
+        config.submit.required_gpus.value = require_gpus;
     }
     validate_effective(&config)?;
 

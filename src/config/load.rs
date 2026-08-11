@@ -136,14 +136,14 @@ mod tests {
         let user = dir.join("user.toml");
         fs::write(
             &global,
-            "[submit]\ndetach = true\ngpus = 2\n[list]\nlimit = 40\n",
+            "[submit]\ndetach = true\nrequired_gpus = 2\n[list]\nlimit = 40\n",
         )
         .unwrap();
-        fs::write(&user, "[submit]\ngpus = 1\n").unwrap();
+        fs::write(&user, "[submit]\nrequired_gpus = 1\n").unwrap();
 
         let config = load_effective_from(&global, Some(&user)).unwrap();
         assert!(config.submit.detach.value);
-        assert_eq!(config.submit.gpus.value, 1);
+        assert_eq!(config.submit.required_gpus.value, 1);
         assert_eq!(config.list.limit.value, 40);
         fs::remove_dir_all(dir).unwrap();
     }
@@ -175,6 +175,13 @@ mod tests {
             load_effective_from(&global, None)
                 .unwrap_err()
                 .contains("must be greater than 0")
+        );
+
+        fs::write(&global, "[start]\ngpus = \"0,0\"\n").unwrap();
+        assert!(
+            load_effective_from(&global, None)
+                .unwrap_err()
+                .contains("Duplicate ID: 0")
         );
         fs::remove_dir_all(dir).unwrap();
     }

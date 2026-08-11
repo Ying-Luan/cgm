@@ -26,10 +26,15 @@ pub(crate) trait Scheduler {
     ///
     /// # Arguments
     ///
-    /// * `pending_jobs` - List of pending jobs to schedule
-    /// * `db` - Database connection pool for updating job status
     /// * `gpu_pool` - GPU manager connection pool for allocating and releasing GPUs
-    fn schedule(&mut self, pending_jobs: Vec<Job>, db: DbPool, gpu_pool: GpuPool);
+    /// * `launch` - Callback that launches a job with its allocated GPUs
+    /// * `pending_jobs` - List of pending jobs to schedule
+    fn schedule(
+        &mut self,
+        gpu_pool: GpuPool,
+        launch: &mut dyn FnMut(Job, Vec<usize>),
+        pending_jobs: Vec<Job>,
+    );
 }
 
 /// Execute single job
@@ -162,6 +167,17 @@ pub(crate) fn run_executor(
     interval: u32,
     mut scheduler: Box<dyn Scheduler>,
 ) {
+    let launch_db = Arc::clone(&db);
+    let launch_gpu_pool = Arc::clone(&gpu_pool);
+    let mut launch = move |job, gpus| {
+        launch_job(
+            job,
+            gpus,
+            Arc::clone(&launch_db),
+            Arc::clone(&launch_gpu_pool),
+        );
+    };
+
     loop {
         // Refresh GPU state, detect external occupation and error state
         {
@@ -176,7 +192,7 @@ pub(crate) fn run_executor(
                 .unwrap_or_default()
         };
 
-        scheduler.schedule(pending_jobs, Arc::clone(&db), Arc::clone(&gpu_pool));
+        scheduler.schedule(Arc::clone(&gpu_pool), &mut launch, pending_jobs);
 
         // Sleep after each scheduling cycle to avoid too frequent database queries and GPU state refresh
         thread::sleep(Duration::from_secs(interval as u64));

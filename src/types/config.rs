@@ -60,7 +60,7 @@ pub(crate) struct SubmitConfig {
     /// Whether to return without following the submitted job log.
     pub(crate) detach: Option<bool>,
     /// Number of GPUs requested by a job.
-    pub(crate) gpus: Option<usize>,
+    pub(crate) required_gpus: Option<usize>,
 }
 
 /// Configuration value source.
@@ -150,9 +150,9 @@ impl Config {
                     source,
                 };
             }
-            if let Some(gpus) = submit.gpus {
-                effective.submit.gpus = WithSource {
-                    value: gpus,
+            if let Some(required_gpus) = submit.required_gpus {
+                effective.submit.required_gpus = WithSource {
+                    value: required_gpus,
                     source,
                 };
             }
@@ -177,7 +177,7 @@ impl From<&EffectiveConfig> for Config {
             }),
             submit: Some(SubmitConfig {
                 detach: Some(effective.submit.detach.value),
-                gpus: Some(effective.submit.gpus.value),
+                required_gpus: Some(effective.submit.required_gpus.value),
             }),
         }
     }
@@ -265,7 +265,7 @@ pub(crate) struct EffectiveSubmitConfig {
     /// Whether to return without following the submitted job log.
     pub(crate) detach: WithSource<bool>,
     /// Number of GPUs requested by a job.
-    pub(crate) gpus: WithSource<usize>,
+    pub(crate) required_gpus: WithSource<usize>,
 }
 
 impl Default for EffectiveConfig {
@@ -285,7 +285,7 @@ impl Default for EffectiveConfig {
             },
             submit: EffectiveSubmitConfig {
                 detach: WithSource::builtin(false),
-                gpus: WithSource::builtin(1),
+                required_gpus: WithSource::builtin(1),
             },
         }
     }

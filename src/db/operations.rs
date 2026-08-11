@@ -9,7 +9,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
     db::schema::initialize_db,
@@ -40,29 +40,46 @@ fn now_timestamp() -> i64 {
 ///
 /// True if compatible, false if incompatible (e.g. missing columns, extra columns, or column name changes)
 pub(crate) fn check_db_compatible(conn: &Connection) -> bool {
-    // Get jobs table column names
-    let mut stmt = conn.prepare("PRAGMA table_info(jobs)").unwrap();
-    let columns: HashSet<String> = stmt
-        .query_map([], |row| row.get(1))
-        .unwrap()
-        .filter_map(|r| r.ok())
-        .collect();
-    // Required column names
-    let required: HashSet<String> = [
-        "id",
-        "status",
-        "username",
-        "command",
-        "gpus",
-        "envs",
-        "log_path",
-        "cwd",
-        "start_time",
-        "end_time",
-    ]
-    .into_iter()
-    .map(String::from)
-    .collect();
+    check_table_columns(
+        conn,
+        &[
+            "id",
+            "status",
+            "username",
+            "command",
+            "allowed_gpus",
+            "required_gpus",
+            "envs",
+            "log_path",
+            "cwd",
+            "remaining_dependencies",
+            "start_time",
+            "end_time",
+        ],
+        "jobs",
+    ) && check_table_columns(conn, &["job_id", "depends_on"], "job_dependencies")
+}
+
+/// Check a database table's columns against the required set.
+///
+/// # Arguments
+///
+/// * `conn` - SQLite connection
+/// * `required` - Required column names
+/// * `table` - Table name from the fixed schema
+///
+/// # Returns
+///
+/// Whether the table columns exactly match the required set or not.
+fn check_table_columns(conn: &Connection, required: &[&str], table: &str) -> bool {
+    let Ok(mut stmt) = conn.prepare(&format!("PRAGMA table_info({})", table)) else {
+        return false;
+    };
+    let Ok(columns) = stmt.query_map([], |row| row.get(1)) else {
+        return false;
+    };
+    let columns: HashSet<String> = columns.filter_map(Result::ok).collect();
+    let required: HashSet<String> = required.iter().map(|column| column.to_string()).collect();
 
     columns == required
 }
@@ -91,40 +108,100 @@ impl DataBase {
 
         // Enable WAL mode: allows concurrent reads, reduces write lock contention
         conn.pragma_update(None, "journal_mode", "WAL")?;
+        // Enable foreign key constraints: ensures referential integrity for job dependencies
+        conn.pragma_update(None, "foreign_keys", true)?;
 
         initialize_db(&conn)?;
 
         Ok(Arc::new(Mutex::new(DataBase { conn })))
     }
 
-    /// Insert a job
+    /// Insert a job and its prerequisite relationships
     ///
     /// # Arguments
     ///
-    /// * `job` - Job struct to insert
+    /// * `dependencies` - Prerequisite job IDs
+    /// * `job` - Job struct to insert and initialize
     ///
     /// # Returns
     ///
     /// Insert result, Ok(()) on success, error message on failure
-    pub(crate) fn insert_job(&self, job: &Job) -> rusqlite::Result<()> {
-        let command_json = serde_json::to_string(&job.command).unwrap();
-        let envs_json = serde_json::to_string(&job.envs).unwrap();
-        self.conn.execute(
-            "INSERT INTO jobs (id, status, username, command, gpus, envs, log_path, cwd, start_time, end_time)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+    pub(crate) fn insert_job_with_dependencies(
+        &self,
+        dependencies: &[usize],
+        job: &mut Job,
+    ) -> Result<(), String> {
+        let transaction = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|error| error.to_string())?;
+        let mut failed_dependency = false;
+        let mut remaining_dependencies = 0;
+
+        for &dependency in dependencies {
+            if dependency == job.id {
+                return Err(format!("Job {} cannot depend on itself", job.id));
+            }
+
+            let status = transaction
+                .query_row(
+                    "SELECT status FROM jobs WHERE id = ?1",
+                    params![dependency as i64],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| format!("Dependency job {} not found", dependency))?;
+            match JobStatus::from_str(&status) {
+                JobStatus::Completed => {}
+                JobStatus::Cancelled | JobStatus::Failed => failed_dependency = true,
+                _ => remaining_dependencies += 1,
+            }
+        }
+
+        job.remaining_dependencies = remaining_dependencies;
+        job.status = if failed_dependency {
+            job.end_time = Some(now_timestamp());
+            JobStatus::Failed
+        } else if remaining_dependencies == 0 {
+            JobStatus::Pending
+        } else {
+            JobStatus::Blocked
+        };
+
+        let command_json = serde_json::to_string(&job.command).map_err(|e| e.to_string())?;
+        let allowed_gpus_json =
+            serde_json::to_string(&job.allowed_gpus).map_err(|e| e.to_string())?;
+        let envs_json = serde_json::to_string(&job.envs).map_err(|e| e.to_string())?;
+        transaction
+            .execute(
+                "INSERT INTO jobs (id, status, username, command, allowed_gpus, required_gpus, envs, log_path, cwd, remaining_dependencies, start_time, end_time)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 job.id as i64,
                 job.status.as_str(),
                 job.username,
                 command_json,
-                job.gpus as i32,
+                allowed_gpus_json,
+                job.required_gpus as i32,
                 envs_json,
                 job.log_path,
                 job.cwd,
+                job.remaining_dependencies as i64,
                 job.start_time,
                 job.end_time,
             ],
-        )?;
+            )
+            .map_err(|e| e.to_string())?;
+        for &dependency in dependencies {
+            transaction
+                .execute(
+                    "INSERT INTO job_dependencies (job_id, depends_on) VALUES (?1, ?2)",
+                    params![job.id as i64, dependency as i64],
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        transaction.commit().map_err(|e| e.to_string())?;
 
         Ok(())
     }
@@ -171,8 +248,7 @@ impl DataBase {
 
     /// Update job status
     ///
-    /// Automatically sets start_time when status becomes Running,
-    /// and end_time when status becomes Completed, Failed, or Cancelled.
+    /// Automatically maintains timestamps and prerequisite state transitions.
     ///
     /// # Arguments
     ///
@@ -192,11 +268,60 @@ impl DataBase {
                     params![status.as_str(), now, job_id as i32],
                 )?;
             }
-            JobStatus::Completed | JobStatus::Failed | JobStatus::Cancelled => {
-                self.conn.execute(
-                    "UPDATE jobs SET status = ?1, end_time = ?2 WHERE id = ?3",
-                    params![status.as_str(), now, job_id as i32],
+            JobStatus::Completed => {
+                let transaction = self.conn.unchecked_transaction()?;
+                let updated = transaction.execute(
+                    "UPDATE jobs SET status = 'completed', end_time = ?1 WHERE id = ?2",
+                    params![now, job_id as i64],
                 )?;
+
+                if updated > 0 {
+                    transaction.execute(
+                        "UPDATE jobs
+                         SET remaining_dependencies = remaining_dependencies - 1,
+                             status = CASE
+                                 WHEN remaining_dependencies = 1 THEN 'pending'
+                                 ELSE status
+                             END
+                         WHERE id IN (
+                             SELECT job_id
+                             FROM job_dependencies
+                             WHERE depends_on = ?1
+                         )",
+                        params![job_id as i64],
+                    )?;
+                }
+
+                transaction.commit()?;
+            }
+            JobStatus::Cancelled | JobStatus::Failed => {
+                let transaction = self.conn.unchecked_transaction()?;
+                let updated = transaction.execute(
+                    "UPDATE jobs SET status = ?1, end_time = ?2 WHERE id = ?3",
+                    params![status.as_str(), now, job_id as i64],
+                )?;
+
+                if updated > 0 {
+                    transaction.execute(
+                        "WITH RECURSIVE descendants(id) AS (
+                             SELECT job_id
+                             FROM job_dependencies
+                             WHERE depends_on = ?1
+                             UNION
+                             SELECT dependency.job_id
+                             FROM job_dependencies dependency
+                             JOIN descendants
+                               ON dependency.depends_on = descendants.id
+                         )
+                         UPDATE jobs
+                         SET status = 'failed',
+                             end_time = ?2
+                         WHERE id IN (SELECT id FROM descendants)",
+                        params![job_id as i64, now],
+                    )?;
+                }
+
+                transaction.commit()?;
             }
             _ => {
                 self.conn.execute(
@@ -316,6 +441,48 @@ impl DataBase {
         }
     }
 
+    /// Get prerequisite job IDs grouped by dependent job ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `job_ids` - Dependent job IDs
+    ///
+    /// # Returns
+    ///
+    /// Prerequisite IDs grouped by job ID.
+    pub(crate) fn get_dependencies_by_job_ids(
+        &self,
+        job_ids: &[usize],
+    ) -> rusqlite::Result<HashMap<usize, Vec<usize>>> {
+        if job_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let placeholders = job_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT job_id, depends_on FROM job_dependencies WHERE job_id IN ({}) ORDER BY job_id ASC, depends_on ASC",
+            placeholders
+        );
+        let params = job_ids.iter().map(|&id| id as i64).collect::<Vec<_>>();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(&params), |row| {
+            Ok((
+                row.get::<_, i64>(0)? as usize,
+                row.get::<_, i64>(1)? as usize,
+            ))
+        })?;
+        let mut dependencies = HashMap::new();
+        for row in rows {
+            let (job_id, depends_on) = row?;
+            dependencies
+                .entry(job_id)
+                .or_insert_with(Vec::new)
+                .push(depends_on);
+        }
+
+        Ok(dependencies)
+    }
+
     /// Internal generic query function, executes query and maps results to Job struct list
     ///
     /// # Arguments
@@ -332,7 +499,7 @@ impl DataBase {
         params: P,
     ) -> rusqlite::Result<Vec<Job>> {
         let sql = format!(
-            "SELECT id, status, username, command, gpus, envs, log_path, cwd, start_time, end_time FROM jobs {}",
+            "SELECT id, status, username, command, allowed_gpus, required_gpus, envs, log_path, cwd, remaining_dependencies, start_time, end_time FROM jobs {}",
             condition
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -343,14 +510,18 @@ impl DataBase {
             let status = JobStatus::from_str(&status_str);
             let command_json: String = row.get(3)?;
             let command: Vec<String> = serde_json::from_str(&command_json).unwrap_or_default();
-            let gpus_int: i64 = row.get(4)?;
-            let envs_json: String = row.get(5)?;
+            let allowed_gpus_json: String = row.get(4)?;
+            let allowed_gpus: Option<Vec<usize>> =
+                serde_json::from_str(&allowed_gpus_json).unwrap_or_default();
+            let required_gpus_int: i64 = row.get(5)?;
+            let envs_json: String = row.get(6)?;
             let envs: HashMap<String, String> =
                 serde_json::from_str(&envs_json).unwrap_or_default();
-            let log_path: String = row.get(6)?;
-            let cwd: String = row.get(7)?;
-            let start_time: Option<i64> = row.get(8)?;
-            let end_time: Option<i64> = row.get(9)?;
+            let log_path: String = row.get(7)?;
+            let cwd: String = row.get(8)?;
+            let remaining_dependencies: i64 = row.get(9)?;
+            let start_time: Option<i64> = row.get(10)?;
+            let end_time: Option<i64> = row.get(11)?;
 
             // Construct and return Job struct
             Ok(Job {
@@ -358,15 +529,214 @@ impl DataBase {
                 status,
                 username: row.get(2)?,
                 command,
-                gpus: gpus_int as usize,
+                allowed_gpus,
+                required_gpus: required_gpus_int as usize,
                 envs,
                 log_path,
                 cwd,
+                remaining_dependencies: remaining_dependencies as usize,
                 start_time,
                 end_time,
             })
         })?;
 
         rows.collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use rusqlite::Connection;
+
+    use super::DataBase;
+    use crate::{
+        db::schema::initialize_db,
+        types::{Job, JobStatus},
+    };
+
+    /// Create an in-memory database with the production schema and constraints.
+    fn database() -> DataBase {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        initialize_db(&conn).unwrap();
+        DataBase { conn }
+    }
+
+    /// Create a pending job for dependency tests.
+    fn job(id: usize) -> Job {
+        Job {
+            id,
+            status: JobStatus::Pending,
+            username: "user".to_string(),
+            command: vec!["true".to_string()],
+            allowed_gpus: None,
+            required_gpus: 1,
+            envs: HashMap::new(),
+            log_path: format!("/tmp/job-{}.log", id),
+            cwd: "/tmp".to_string(),
+            remaining_dependencies: 0,
+            start_time: None,
+            end_time: None,
+        }
+    }
+
+    /// Insert a test job and return its persisted representation.
+    fn insert(db: &DataBase, dependencies: &[usize], id: usize) -> Job {
+        let mut job = job(id);
+        db.insert_job_with_dependencies(dependencies, &mut job)
+            .unwrap();
+        db.get_job_by_id(id).unwrap().unwrap()
+    }
+
+    #[test]
+    fn inserts_blocked_job_and_loads_dependencies() {
+        let db = database();
+        insert(&db, &[], 1);
+        let dependent = insert(&db, &[1], 2);
+
+        assert_eq!(dependent.status, JobStatus::Blocked);
+        assert_eq!(dependent.remaining_dependencies, 1);
+        assert_eq!(
+            db.get_dependencies_by_job_ids(&[2]).unwrap().get(&2),
+            Some(&vec![1])
+        );
+    }
+
+    #[test]
+    fn rejects_missing_and_duplicate_dependencies() {
+        let db = database();
+        insert(&db, &[], 1);
+
+        assert!(
+            db.insert_job_with_dependencies(&[99], &mut job(2))
+                .unwrap_err()
+                .contains("not found")
+        );
+        assert!(
+            db.insert_job_with_dependencies(&[2], &mut job(2))
+                .unwrap_err()
+                .contains("itself")
+        );
+        assert!(
+            db.insert_job_with_dependencies(&[1, 1], &mut job(2))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn completing_last_dependency_releases_blocked_job() {
+        let db = database();
+        insert(&db, &[], 1);
+        insert(&db, &[], 2);
+        insert(&db, &[1, 2], 3);
+        db.update_status(1, JobStatus::Running).unwrap();
+
+        db.update_status(1, JobStatus::Completed).unwrap();
+
+        let prerequisite = db.get_job_by_id(1).unwrap().unwrap();
+        let dependent = db.get_job_by_id(3).unwrap().unwrap();
+        assert_eq!(prerequisite.status, JobStatus::Completed);
+        assert_eq!(dependent.status, JobStatus::Blocked);
+        assert_eq!(dependent.remaining_dependencies, 1);
+
+        db.update_status(2, JobStatus::Running).unwrap();
+        db.update_status(2, JobStatus::Completed).unwrap();
+        let dependent = db.get_job_by_id(3).unwrap().unwrap();
+        assert_eq!(dependent.status, JobStatus::Pending);
+        assert_eq!(dependent.remaining_dependencies, 0);
+    }
+
+    #[test]
+    fn completed_dependency_does_not_block_new_job() {
+        let db = database();
+        insert(&db, &[], 1);
+        db.update_status(1, JobStatus::Running).unwrap();
+        db.update_status(1, JobStatus::Completed).unwrap();
+
+        let dependent = insert(&db, &[1], 2);
+        assert_eq!(dependent.status, JobStatus::Pending);
+        assert_eq!(dependent.remaining_dependencies, 0);
+    }
+
+    #[test]
+    fn persists_allowed_gpus() {
+        let db = database();
+        let mut job = job(1);
+        job.allowed_gpus = Some(vec![0, 2]);
+
+        db.insert_job_with_dependencies(&[], &mut job).unwrap();
+
+        assert_eq!(
+            db.get_job_by_id(1).unwrap().unwrap().allowed_gpus,
+            Some(vec![0, 2])
+        );
+    }
+
+    #[test]
+    fn failed_dependency_fails_blocked_descendants() {
+        let db = database();
+        insert(&db, &[], 1);
+        insert(&db, &[1], 2);
+        insert(&db, &[2], 3);
+
+        db.update_status(1, JobStatus::Failed).unwrap();
+
+        assert_eq!(
+            db.get_job_by_id(1).unwrap().unwrap().status,
+            JobStatus::Failed
+        );
+        assert_eq!(
+            db.get_job_by_id(2).unwrap().unwrap().status,
+            JobStatus::Failed
+        );
+        assert_eq!(
+            db.get_job_by_id(3).unwrap().unwrap().status,
+            JobStatus::Failed
+        );
+    }
+
+    #[test]
+    fn cancelled_dependency_fails_blocked_descendants() {
+        let db = database();
+        insert(&db, &[], 1);
+        insert(&db, &[1], 2);
+        insert(&db, &[2], 3);
+
+        db.update_status(1, JobStatus::Cancelled).unwrap();
+
+        assert_eq!(
+            db.get_job_by_id(1).unwrap().unwrap().status,
+            JobStatus::Cancelled
+        );
+        assert_eq!(
+            db.get_job_by_id(2).unwrap().unwrap().status,
+            JobStatus::Failed
+        );
+        assert_eq!(
+            db.get_job_by_id(3).unwrap().unwrap().status,
+            JobStatus::Failed
+        );
+    }
+
+    #[test]
+    fn deleting_prerequisite_is_restricted() {
+        let db = database();
+        insert(&db, &[], 1);
+        insert(&db, &[1], 2);
+
+        assert!(db.delete_jobs(&[1]).is_err());
+        assert_eq!(db.delete_jobs(&[2]).unwrap(), 1);
+        assert_eq!(db.delete_jobs(&[1]).unwrap(), 1);
+    }
+
+    #[test]
+    fn deleting_related_jobs_together_is_allowed() {
+        let db = database();
+        insert(&db, &[], 1);
+        insert(&db, &[1], 2);
+
+        assert_eq!(db.delete_jobs(&[1, 2]).unwrap(), 2);
     }
 }

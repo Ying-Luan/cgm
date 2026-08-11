@@ -2,14 +2,10 @@
 //!
 //! Iterates all pending jobs each cycle, reserves GPUs for each job in order if available, and launches when enough are reserved.
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
-    daemon::scheduler::{Scheduler, launch_job},
-    db::DbPool,
+    daemon::scheduler::Scheduler,
     hardware::GpuPool,
     types::{GpuState, Job},
 };
@@ -69,28 +65,41 @@ impl FifoScheduler {
 }
 
 impl Scheduler for FifoScheduler {
-    fn schedule(&mut self, pending_jobs: Vec<Job>, db: DbPool, gpu_pool: GpuPool) {
-        // Clean up reservations for jobs no longer in pending list
+    fn schedule(
+        &mut self,
+        gpu_pool: GpuPool,
+        launch: &mut dyn FnMut(Job, Vec<usize>),
+        pending_jobs: Vec<Job>,
+    ) {
+        // Clean up reservations for jobs no longer pending or for gpus no longer idle.
         let pending_ids: HashSet<usize> = pending_jobs.iter().map(|j| j.id).collect();
-        self.reserved.retain(|_, jid| pending_ids.contains(jid));
-
-        // get all idle GPU ids and filter out reserved ones
         let mut idle = gpu_pool
             .lock()
             .unwrap()
             .find_gpu_ids_by_state(GpuState::Idle);
+        self.reserved
+            .retain(|gpu_id, job_id| pending_ids.contains(job_id) && idle.contains(gpu_id));
         idle.retain(|id| !self.reserved.contains_key(id));
 
         for job in pending_jobs {
             let already_reserved = self.reserved_for_job(job.id);
-            let needed = job.gpus;
-            let total_available = already_reserved.len() + idle.len();
+            let available: Vec<usize> = idle
+                .iter()
+                .filter(|id| {
+                    job.allowed_gpus
+                        .as_ref()
+                        .is_none_or(|allowed| allowed.contains(id))
+                })
+                .copied()
+                .collect();
+            let needed = job.required_gpus;
+            let total_available = already_reserved.len() + available.len();
 
             if total_available >= needed {
                 // Enough GPUs: combine reserved + idle, take exactly what we need
                 let mut gpus = already_reserved.clone();
                 let extra_needed = needed - gpus.len();
-                let extra: Vec<usize> = idle.iter().take(extra_needed).copied().collect();
+                let extra: Vec<usize> = available.into_iter().take(extra_needed).collect();
                 gpus.extend(&extra);
 
                 // Remove used idle GPUs from idle list for subsequent jobs
@@ -99,11 +108,11 @@ impl Scheduler for FifoScheduler {
                 // Clear reservation for this job before launching
                 self.clear_job_reservation(job.id);
 
-                launch_job(job, gpus, Arc::clone(&db), Arc::clone(&gpu_pool));
+                launch(job, gpus);
             } else {
-                // Not enough: absorb remaining idle into reservation for this job
-                self.reserve(job.id, &idle);
-                idle.clear();
+                // Reserve only GPUs this job may use, leaving unrelated GPUs available.
+                self.reserve(job.id, &available);
+                idle.retain(|id| !available.contains(id));
                 // Continue iterating: other jobs may have their own reserved GPUs
             }
         }

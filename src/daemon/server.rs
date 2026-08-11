@@ -123,10 +123,20 @@ impl Server {
             Request::Rerun {
                 id,
                 envs,
-                gpus,
+                allowed_gpus,
+                dependencies,
+                required_gpus,
                 log_path,
                 username,
-            } => self.handle_rerun(id, envs, gpus, log_path, &username),
+            } => self.handle_rerun(
+                id,
+                envs,
+                allowed_gpus,
+                dependencies,
+                required_gpus,
+                log_path,
+                &username,
+            ),
             Request::Cancel {
                 id,
                 username,
@@ -183,7 +193,9 @@ impl Server {
     ///
     /// * `id` - Source job ID
     /// * `envs` - Optional current environment snapshot
-    /// * `gpus` - Optional GPU count override
+    /// * `allowed_gpus` - Optional allowed GPU ID override
+    /// * `dependencies` - Optional dependency override
+    /// * `required_gpus` - Optional GPU count override
     /// * `log_path` - Optional log path override
     /// * `username` - User requesting the rerun
     ///
@@ -194,7 +206,9 @@ impl Server {
         &self,
         id: usize,
         envs: Option<HashMap<String, String>>,
-        gpus: Option<usize>,
+        allowed_gpus: Option<Vec<usize>>,
+        dependencies: Option<Vec<usize>>,
+        required_gpus: Option<usize>,
         log_path: Option<String>,
         username: &str,
     ) -> Response {
@@ -211,8 +225,10 @@ impl Server {
 
         let request = JobRequest {
             username: job.username,
+            allowed_gpus: allowed_gpus.or(job.allowed_gpus),
             command: job.command,
-            gpus: gpus.unwrap_or(job.gpus),
+            dependencies: dependencies.unwrap_or_default(),
+            required_gpus: required_gpus.unwrap_or(job.required_gpus),
             envs: envs.unwrap_or(job.envs),
             log_path,
             cwd: job.cwd,
@@ -235,11 +251,27 @@ impl Server {
     /// New job ID and log path on success, or an error message on failure.
     fn create_job(&self, req: JobRequest) -> Result<(usize, String), String> {
         let q = self.queue.lock().unwrap();
-        let job = Job::from_request(q.get_max_id().unwrap_or(0) + 1, req);
+        let dependencies = req.dependencies.clone();
+        let mut job = Job::from_request(q.get_max_id().unwrap_or(0) + 1, req);
 
-        self.prepare_log_file(&job.log_path, &job.username)?;
+        if let Some(allowed_gpus) = &job.allowed_gpus
+            && !self.gpu_pool.lock().unwrap().manages_gpu_ids(allowed_gpus)
+        {
+            return Err("Allowed GPU IDs must be managed by the daemon".to_string());
+        }
 
-        q.insert_job(&job).map_err(|e| e.to_string())?;
+        if let Some(allowed_gpus) = &job.allowed_gpus
+            && job.required_gpus > allowed_gpus.len()
+        {
+            return Err("require-gpus cannot exceed the number of allowed GPUs".to_string());
+        }
+
+        q.insert_job_with_dependencies(&dependencies, &mut job)?;
+        if let Err(message) = self.prepare_log_file(&job.log_path, &job.username) {
+            q.delete_jobs(&[job.id]).ok();
+            return Err(message);
+        }
+
         Ok((job.id, job.log_path))
     }
 
@@ -280,7 +312,7 @@ impl Server {
 
     /// Handle job cancellation request
     ///
-    /// Checks permission and job status. Pending jobs are directly cancelled.
+    /// Checks permission and job status. Blocked and pending jobs are directly cancelled.
     ///
     /// Running jobs require `--force` flag and will be forcibly terminated.
     ///
@@ -296,13 +328,18 @@ impl Server {
     fn handle_cancel(&self, id: usize, username: &str, force: bool) -> Response {
         match self.get_job_with_permission(id, username) {
             Ok(job) => match job.status {
-                JobStatus::Pending => {
-                    self.queue
+                JobStatus::Blocked | JobStatus::Pending => {
+                    match self
+                        .queue
                         .lock()
                         .unwrap()
                         .update_status(id, JobStatus::Cancelled)
-                        .ok();
-                    Response::Cancel
+                    {
+                        Ok(()) => Response::Cancel,
+                        Err(error) => Response::Error {
+                            message: error.to_string(),
+                        },
+                    }
                 }
                 JobStatus::Running if force => match self.force_cancel_running(id) {
                     Ok(()) => Response::Cancel,
@@ -343,7 +380,7 @@ impl Server {
             .lock()
             .unwrap()
             .update_status(id, JobStatus::Cancelled)
-            .ok();
+            .map_err(|error| error.to_string())?;
         let gpus_to_release = self
             .gpu_pool
             .lock()
@@ -380,14 +417,8 @@ impl Server {
             DeleteTarget::AllTerminated => self.delete_all_terminated(),
         };
 
-        // delete log files
-        let ids = match result {
-            Ok((ids, log_paths)) => {
-                for path in &log_paths {
-                    let _ = fs::remove_file(path);
-                }
-                ids
-            }
+        let (ids, log_paths) = match result {
+            Ok(result) => result,
             Err(e) => return Response::Error { message: e },
         };
 
@@ -399,7 +430,13 @@ impl Server {
             .delete_jobs(&ids)
             .map_err(|e| e.to_string())
         {
-            Ok(count) => Response::Delete { count },
+            Ok(count) => {
+                // delete log files
+                for path in &log_paths {
+                    let _ = fs::remove_file(path);
+                }
+                Response::Delete { count }
+            }
             Err(e) => Response::Error { message: e },
         }
     }
@@ -514,7 +551,7 @@ impl Server {
     ///
     /// Jobs filtered by username. Root user sees all jobs.
     fn handle_list(&self, username: &str, limit: Option<usize>) -> Response {
-        let (total, jobs) = {
+        let (dependencies, total, jobs) = {
             let q = self.queue.lock().unwrap();
 
             let total = q.get_job_count().unwrap_or(0) as usize;
@@ -524,7 +561,10 @@ impl Server {
                 q.get_jobs_by_username(username, limit).unwrap_or_default()
             };
 
-            (total, jobs)
+            let job_ids = jobs.iter().map(|job| job.id).collect::<Vec<_>>();
+            let dependencies = q.get_dependencies_by_job_ids(&job_ids).unwrap_or_default();
+
+            (dependencies, total, jobs)
         };
 
         let job_infos: Vec<JobPrintInfo> = jobs
@@ -534,7 +574,10 @@ impl Server {
                 status: j.status,
                 username: j.username,
                 command: j.command,
-                gpus: j.gpus,
+                allowed_gpus: j.allowed_gpus,
+                dependencies: dependencies.get(&j.id).cloned().unwrap_or_default(),
+                required_gpus: j.required_gpus,
+                remaining_dependencies: j.remaining_dependencies,
                 start_time: j.start_time,
                 end_time: j.end_time,
             })

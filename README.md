@@ -73,12 +73,13 @@ cgm/
 │   ├── monitor.rs           # Status display (show_status, show_list)
 │   ├── os.rs                # User info and permission checks
 │   ├── types.rs             # Types module entry
-│   └── types/
-│       ├── config.rs        # Configuration types, scope, and source
-│       ├── gpu.rs           # GpuInfo, GpuState
-│       ├── ipc.rs           # IPC message types
-│       ├── job.rs           # Job, JobStatus
-│       └── scheduler.rs     # Scheduler type definitions
+│   ├── types/
+│   │   ├── config.rs        # Configuration types, scope, and source
+│   │   ├── gpu.rs           # GpuInfo, GpuState
+│   │   ├── ipc.rs           # IPC message types
+│   │   ├── job.rs           # Job, JobStatus
+│   │   └── scheduler.rs     # Scheduler type definitions
+│   └── utils.rs             # Shared helper functions
 ├── .gitignore
 ├── Cargo.lock
 ├── Cargo.toml

@@ -64,10 +64,12 @@ cgm submit [OPTIONS] -- <COMMAND>
 
 | Option | Short | Default | Description | Config Key |
 | ------ | ----- | ------- | ----------- | --- |
+| `--allow-gpus <ID,ID,...>` | `-G <ID,ID,...>` | ` ` | Restrict GPU IDs this job may use, comma-separated | ` ` |
+| `--depends-on <ID,ID,...>` | ` ` | ` ` | Comma-separated prerequisite jobs that must complete successfully | ` ` |
 | `--detach` | `-d` | `false` | Detach mode. Returns immediately without blocking the terminal | `submit.detach` |
 | `--follow` | ` ` | `true` | Open `less` after submission and follow the log, blocks the terminal | `submit.detach` |
-| `--gpus <N>` | `-g <N>` | `1` | Number of GPUs to request for this job | `submit.gpus` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | Log file path | ` ` |
+| `--require-gpus <N>` | `-g <N>` | `1` | Number of GPUs to request for this job | `submit.required_gpus` |
 
 ### Examples
 
@@ -101,11 +103,15 @@ cgm rerun <JOB_ID> [OPTIONS]
 
 | Option | Short | Default | Description | Config Key |
 | ------ | ----- | ------- | ----------- | --- |
+| `--allow-gpus <ID,ID,...>` | `-G <ID,ID,...>` | ` ` | Override GPU IDs this job may use, comma-separated | ` ` |
 | `--current-env` | `-e` | `false` | Replace the saved environment with the current environment | ` ` |
+| `--depends-on <ID,ID,...>` | ` ` | ` ` | Specify prerequisite jobs for the new job, comma-separated | ` ` |
 | `--detach` | `-d` | `false` | Enable detach mode. Do not open the log viewer after submission | `rerun.detach` |
 | `--follow` | ` ` | `true` | Open `less` to follow the new job log, blocks the terminal | `rerun.detach` |
-| `--gpus <N>` | `-g <N>` | ` ` | Override the number of GPUs for the new job | ` ` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | Set the new job's log path | ` ` |
+| `--require-gpus <N>` | `-g <N>` | ` ` | Override the number of GPUs for the new job | ` ` |
+
+A rerun keeps the source job's allowed GPU IDs but does not inherit its dependencies.
 
 ## Cancel Job
 

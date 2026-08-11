@@ -22,7 +22,7 @@ use crate::types::SchedulerKind;
 #[derive(Parser)]
 #[command(
     name = "cgm",
-    version = "0.1.0",
+    version,
     about = "Convenient GPU Manager",
     arg_required_else_help = true
 )]
@@ -87,6 +87,21 @@ enum Commands {
     },
     /// Submit job
     Submit {
+        /// Comma-separated GPU IDs this job may use
+        #[arg(
+            short = 'G',
+            long,
+            value_name = "ID,ID,...",
+            help = "Comma-separated GPU IDs this job may use"
+        )]
+        allow_gpus: Option<String>,
+        /// Comma-separated prerequisite job IDs
+        #[arg(
+            long,
+            value_name = "ID,ID,...",
+            help = "Comma-separated prerequisite job IDs"
+        )]
+        depends_on: Option<String>,
         /// Detach mode. Opens less to follow log after submission
         #[arg(
             short,
@@ -103,16 +118,16 @@ enum Commands {
             help = "Follow mode. Opens less to follow the job log after submission"
         )]
         follow: bool,
-        /// Number of GPUs to request
-        #[arg(
-            short,
-            long,
-            help = "Number of GPUs to request; defaults to config or 1"
-        )]
-        gpus: Option<usize>,
         /// Log file path
         #[arg(short, long, help = "Log file path")]
         log: Option<String>,
+        /// Number of GPUs to request
+        #[arg(
+            short = 'g',
+            long,
+            help = "Number of GPUs to request; defaults to config or 1"
+        )]
+        require_gpus: Option<usize>,
         /// Command to execute
         #[arg(last = true, required = true, help = "Command to execute")]
         command: Vec<String>,
@@ -122,6 +137,14 @@ enum Commands {
         /// Source job ID
         #[arg(help = "Source job ID")]
         id: usize,
+        /// Comma-separated GPU IDs this job may use
+        #[arg(
+            short = 'G',
+            long,
+            value_name = "ID,ID,...",
+            help = "Comma-separated GPU IDs this job may use"
+        )]
+        allow_gpus: Option<String>,
         /// Use current environment instead of saved environment
         #[arg(
             short = 'e',
@@ -130,6 +153,13 @@ enum Commands {
             help = "Use current environment instead of saved environment"
         )]
         current_env: bool,
+        /// Comma-separated prerequisite job IDs
+        #[arg(
+            long,
+            value_name = "ID,ID,...",
+            help = "Comma-separated prerequisite job IDs"
+        )]
+        depends_on: Option<String>,
         /// Enable detach mode. Do not open the log viewer after submission
         #[arg(
             short,
@@ -146,12 +176,12 @@ enum Commands {
             help = "Open less to follow the new job log"
         )]
         follow: bool,
-        /// Override number of GPUs
-        #[arg(short, long, help = "Override number of GPUs")]
-        gpus: Option<usize>,
         /// Set the new job's log path
         #[arg(short, long, help = "Set the new job's log path")]
         log: Option<String>,
+        /// Override number of GPUs
+        #[arg(short = 'g', long, help = "Override number of GPUs")]
+        require_gpus: Option<usize>,
     },
     /// Cancel job
     Cancel {
@@ -235,20 +265,41 @@ pub(crate) fn run() {
         } => start::run(force, gpus, interval, scheduler, threshold),
         Commands::Stop { force } => stop::run(force),
         Commands::Submit {
+            allow_gpus,
             command,
+            depends_on,
             detach,
             follow,
-            gpus,
             log,
-        } => submit::run(command, detach, follow, gpus, log),
+            require_gpus,
+        } => submit::run(
+            allow_gpus,
+            command,
+            depends_on,
+            detach,
+            follow,
+            log,
+            require_gpus,
+        ),
         Commands::Rerun {
             id,
+            allow_gpus,
             current_env,
+            depends_on,
             detach,
             follow,
-            gpus,
             log,
-        } => rerun::run(id, current_env, detach, follow, gpus, log),
+            require_gpus,
+        } => rerun::run(
+            id,
+            allow_gpus,
+            current_env,
+            depends_on,
+            detach,
+            follow,
+            log,
+            require_gpus,
+        ),
         Commands::Cancel { id, force } => cancel::run(id, force),
         Commands::Delete { id, all, status } => delete::run(id, all, status),
         Commands::Status => status::run(),
@@ -291,5 +342,35 @@ mod tests {
             Cli::try_parse_from(["cgm", "submit", "--detach", "--follow", "--", "true"]).is_err()
         );
         assert!(Cli::try_parse_from(["cgm", "rerun", "1", "--detach", "--follow"]).is_err());
+    }
+
+    #[test]
+    fn submit_preserves_dependency_argument() {
+        let cli = Cli::try_parse_from([
+            "cgm",
+            "submit",
+            "--allow-gpus",
+            "0,2",
+            "--depends-on",
+            "1,2,3",
+            "--require-gpus",
+            "2",
+            "--",
+            "true",
+        ])
+        .unwrap();
+        let Commands::Submit {
+            allow_gpus,
+            depends_on,
+            require_gpus,
+            ..
+        } = cli.command
+        else {
+            panic!("expected submit command");
+        };
+
+        assert_eq!(allow_gpus.as_deref(), Some("0,2"));
+        assert_eq!(depends_on.as_deref(), Some("1,2,3"));
+        assert_eq!(require_gpus, Some(2));
     }
 }

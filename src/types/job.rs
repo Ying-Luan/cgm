@@ -19,14 +19,18 @@ pub(crate) struct Job {
     pub(crate) username: String,
     /// Command
     pub(crate) command: Vec<String>,
+    /// GPU IDs this job may use, None for all managed GPUs
+    pub(crate) allowed_gpus: Option<Vec<usize>>,
     /// Number of GPUs requested
-    pub(crate) gpus: usize,
+    pub(crate) required_gpus: usize,
     /// Environment variables snapshot
     pub(crate) envs: HashMap<String, String>,
     /// Log file path
     pub(crate) log_path: String,
     /// Working directory at submission time
     pub(crate) cwd: String,
+    /// Number of unfinished prerequisite jobs
+    pub(crate) remaining_dependencies: usize,
     /// Job start time (Unix timestamp), None if not started
     pub(crate) start_time: Option<i64>,
     /// Job end time (Unix timestamp), None if not ended
@@ -49,10 +53,12 @@ impl Job {
             status: JobStatus::Pending,
             username: req.username,
             command: req.command,
-            gpus: req.gpus,
+            allowed_gpus: req.allowed_gpus,
+            required_gpus: req.required_gpus,
             envs: req.envs,
             log_path,
             cwd: req.cwd,
+            remaining_dependencies: 0,
             start_time: None,
             end_time: None,
         }
@@ -64,6 +70,8 @@ impl Job {
 pub(crate) enum JobStatus {
     /// Unknown
     Unknown,
+    /// Waiting for prerequisite jobs to complete
+    Blocked,
     /// Waiting to be scheduled
     Pending,
     /// Running
@@ -81,6 +89,7 @@ impl JobStatus {
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
             JobStatus::Unknown => "unknown",
+            JobStatus::Blocked => "blocked",
             JobStatus::Pending => "pending",
             JobStatus::Running => "running",
             JobStatus::Completed => "completed",
@@ -92,6 +101,7 @@ impl JobStatus {
     /// Parse status from string
     pub(crate) fn from_str(s: &str) -> Self {
         match s {
+            "blocked" => JobStatus::Blocked,
             "pending" => JobStatus::Pending,
             "running" => JobStatus::Running,
             "completed" => JobStatus::Completed,
@@ -104,6 +114,7 @@ impl JobStatus {
     /// Get terminal color for status
     pub(crate) fn color(&self) -> Color {
         match self {
+            JobStatus::Blocked => Color::Yellow,
             JobStatus::Running => Color::Green,
             JobStatus::Pending => Color::Yellow,
             JobStatus::Failed => Color::Red,
@@ -119,10 +130,14 @@ impl JobStatus {
 pub(crate) struct JobRequest {
     /// Submitting user
     pub(crate) username: String,
+    /// GPU IDs this job may use, None for all managed GPUs
+    pub(crate) allowed_gpus: Option<Vec<usize>>,
     /// Command
     pub(crate) command: Vec<String>,
+    /// Prerequisite job IDs
+    pub(crate) dependencies: Vec<usize>,
     /// Number of GPUs requested
-    pub(crate) gpus: usize,
+    pub(crate) required_gpus: usize,
     /// Environment variables snapshot
     pub(crate) envs: HashMap<String, String>,
     /// Log file path
@@ -142,8 +157,14 @@ pub(crate) struct JobPrintInfo {
     pub(crate) username: String,
     /// Command
     pub(crate) command: Vec<String>,
+    /// GPU IDs this job may use, None for all managed GPUs
+    pub(crate) allowed_gpus: Option<Vec<usize>>,
+    /// Prerequisite job IDs
+    pub(crate) dependencies: Vec<usize>,
     /// Number of GPUs requested
-    pub(crate) gpus: usize,
+    pub(crate) required_gpus: usize,
+    /// Number of unfinished prerequisite jobs
+    pub(crate) remaining_dependencies: usize,
     /// Job start time (Unix timestamp), None if not started
     pub(crate) start_time: Option<i64>,
     /// Job end time (Unix timestamp), None if not ended

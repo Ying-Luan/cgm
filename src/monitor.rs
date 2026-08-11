@@ -142,10 +142,43 @@ pub(crate) fn show_list(limit: Option<usize>) {
 
             let mut table = Table::new();
             table.load_preset(NOTHING).set_header(vec![
-                "ID", "Status", "User", "GPUs", "Start", "Duration", "Command",
+                "ID",
+                "Status",
+                "User",
+                "Required GPUs",
+                "Allowed GPUs",
+                "Depends On",
+                "Remaining",
+                "Start",
+                "Duration",
+                "Command",
             ]);
 
             for job in jobs {
+                let allowed_gpus = job.allowed_gpus.map_or_else(
+                    || "all".to_string(),
+                    |allowed_gpus| {
+                        allowed_gpus
+                            .iter()
+                            .map(usize::to_string)
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    },
+                );
+                let dependencies = if job.dependencies.is_empty() {
+                    "-".to_string()
+                } else {
+                    job.dependencies
+                        .iter()
+                        .map(usize::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",")
+                };
+                let remaining = if job.dependencies.is_empty() {
+                    "-".to_string()
+                } else {
+                    format!("{}/{}", job.remaining_dependencies, job.dependencies.len())
+                };
                 let start_str = job
                     .start_time
                     .map(format_timestamp)
@@ -155,7 +188,10 @@ pub(crate) fn show_list(limit: Option<usize>) {
                     Cell::new(job.id.to_string()),
                     Cell::new(job.status.as_str()).fg(job.status.color()),
                     Cell::new(job.username),
-                    Cell::new(job.gpus.to_string()),
+                    Cell::new(job.required_gpus.to_string()),
+                    Cell::new(allowed_gpus),
+                    Cell::new(dependencies),
+                    Cell::new(remaining),
                     Cell::new(start_str),
                     Cell::new(duration_str),
                     Cell::new(job.command.join(" ")),

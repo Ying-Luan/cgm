@@ -199,20 +199,44 @@ impl GpuManager {
             .collect()
     }
 
-    /// Find available GPUs
+    /// Check whether all GPU IDs are managed by this daemon.
+    ///
+    /// # Arguments
+    ///
+    /// * `gpu_ids` - GPU IDs to check
+    ///
+    /// # Returns
+    ///
+    /// Whether every GPU ID is managed or not.
+    pub(crate) fn manages_gpu_ids(&self, gpu_ids: &[usize]) -> bool {
+        gpu_ids
+            .iter()
+            .all(|id| self.gpus.iter().any(|gpu| gpu.id == *id))
+    }
+
+    /// Find available GPUs within an optional allowed GPU ID set.
     ///
     /// `refresh_state()` should be called before this to get latest GPU state and detect external occupation
     ///
     /// # Arguments
     ///
+    /// * `allowed_gpus` - Optional GPU IDs allowed for this job
     /// * `count` - Number of GPUs needed
     ///
     /// # Returns
     ///
     /// Available GPU index list, error if not enough GPUs
-    pub(crate) fn find_available_gpus(&self, count: usize) -> Result<Vec<usize>, String> {
+    pub(crate) fn find_available_gpus(
+        &self,
+        allowed_gpus: Option<&[usize]>,
+        count: usize,
+    ) -> Result<Vec<usize>, String> {
         // Get all Idle GPU indices
-        let available: Vec<usize> = self.find_gpu_ids_by_state(GpuState::Idle);
+        let available: Vec<usize> = self
+            .find_gpu_ids_by_state(GpuState::Idle)
+            .into_iter()
+            .filter(|id| allowed_gpus.is_none_or(|allowed| allowed.contains(id)))
+            .collect();
 
         if available.len() < count {
             Err(format!(

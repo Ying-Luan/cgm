@@ -16,6 +16,7 @@ mod macros;
 mod monitor;
 mod os;
 mod types;
+mod utils;
 
 use crate::cli::run;
 

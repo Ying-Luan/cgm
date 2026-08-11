@@ -39,8 +39,8 @@ enum ConfigKey {
     StartThreshold,
     /// `submit.detach`.
     SubmitDetach,
-    /// `submit.gpus`.
-    SubmitGpus,
+    /// `submit.required_gpus`.
+    SubmitRequiredGpus,
 }
 
 impl ConfigKey {
@@ -51,7 +51,7 @@ impl ConfigKey {
         ConfigKey::StartScheduler,
         ConfigKey::StartThreshold,
         ConfigKey::SubmitDetach,
-        ConfigKey::SubmitGpus,
+        ConfigKey::SubmitRequiredGpus,
         ConfigKey::RerunDetach,
         ConfigKey::ListLimit,
     ];
@@ -70,7 +70,7 @@ impl ConfigKey {
             Self::StartScheduler => ("start", "scheduler", "start.scheduler"),
             Self::StartThreshold => ("start", "threshold", "start.threshold"),
             Self::SubmitDetach => ("submit", "detach", "submit.detach"),
-            Self::SubmitGpus => ("submit", "gpus", "submit.gpus"),
+            Self::SubmitRequiredGpus => ("submit", "required_gpus", "submit.required_gpus"),
         }
     }
 
@@ -98,7 +98,7 @@ impl ConfigKey {
             .and_then(Item::as_value)
             .map(|value| value.decor().clone());
         let mut item = match self {
-            Self::ListLimit | Self::SubmitGpus => {
+            Self::ListLimit | Self::SubmitRequiredGpus => {
                 let parsed = raw_value
                     .parse::<usize>()
                     .map_err(|_| format!("{}.{} must be a positive integer", section, field))?;
@@ -152,7 +152,7 @@ impl ConfigKey {
             Self::StartScheduler => config.start.scheduler.value_and_source(),
             Self::StartThreshold => config.start.threshold.value_and_source(),
             Self::SubmitDetach => config.submit.detach.value_and_source(),
-            Self::SubmitGpus => config.submit.gpus.value_and_source(),
+            Self::SubmitRequiredGpus => config.submit.required_gpus.value_and_source(),
         }
     }
 
@@ -174,7 +174,9 @@ impl ConfigKey {
             Self::StartScheduler => config.start.as_ref()?.scheduler.map(|v| v.to_string()),
             Self::StartThreshold => config.start.as_ref()?.threshold.map(|v| v.to_string()),
             Self::SubmitDetach => config.submit.as_ref()?.detach.map(|v| v.to_string()),
-            Self::SubmitGpus => config.submit.as_ref()?.gpus.map(|v| v.to_string()),
+            Self::SubmitRequiredGpus => {
+                config.submit.as_ref()?.required_gpus.map(|v| v.to_string())
+            }
         }
     }
 
@@ -203,7 +205,7 @@ impl FromStr for ConfigKey {
             "start.scheduler" => Ok(Self::StartScheduler),
             "start.threshold" => Ok(Self::StartThreshold),
             "submit.detach" => Ok(Self::SubmitDetach),
-            "submit.gpus" => Ok(Self::SubmitGpus),
+            "submit.required_gpus" => Ok(Self::SubmitRequiredGpus),
             _ => Err(format!("Unknown config key: {}", key)),
         }
     }
@@ -602,12 +604,12 @@ mod tests {
         let path = dir.join("config.toml");
         fs::write(
             &path,
-            "# Submission defaults\n[submit]\n# GPU count\ngpus   = 1 # per job\n",
+            "# Submission defaults\n[submit]\n# GPU count\nrequired_gpus   = 1 # per job\n",
         )
         .unwrap();
 
         set_at(
-            &ConfigKey::from_str("submit.gpus").unwrap(),
+            &ConfigKey::from_str("submit.required_gpus").unwrap(),
             &path,
             "2",
             ConfigScope::Global,
@@ -616,7 +618,7 @@ mod tests {
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("# Submission defaults"));
         assert!(content.contains("# GPU count"));
-        assert!(content.contains("gpus   = 2 # per job"));
+        assert!(content.contains("required_gpus   = 2 # per job"));
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -624,13 +626,17 @@ mod tests {
     fn set_and_unset_can_repair_invalid_target_values() {
         let dir = temp_dir("repair");
         let path = dir.join("config.toml");
-        fs::write(&path, "[submit]\ngpus = \"invalid\"\n").unwrap();
+        fs::write(&path, "[submit]\nrequired_gpus = \"invalid\"\n").unwrap();
 
-        let key = ConfigKey::from_str("submit.gpus").unwrap();
+        let key = ConfigKey::from_str("submit.required_gpus").unwrap();
         set_at(&key, &path, "2", ConfigScope::User).unwrap();
-        assert!(fs::read_to_string(&path).unwrap().contains("gpus = 2"));
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains("required_gpus = 2")
+        );
 
-        fs::write(&path, "[submit]\ngpus = \"invalid\"\n").unwrap();
+        fs::write(&path, "[submit]\nrequired_gpus = \"invalid\"\n").unwrap();
         assert!(unset_at(&key, &path, ConfigScope::User).unwrap());
         assert!(!fs::read_to_string(&path).unwrap().contains("submit"));
         fs::remove_dir_all(dir).unwrap();
@@ -640,7 +646,7 @@ mod tests {
     fn rejects_non_table_sections_without_panicking() {
         let dir = temp_dir("non-table");
         let path = dir.join("config.toml");
-        let key = ConfigKey::from_str("submit.gpus").unwrap();
+        let key = ConfigKey::from_str("submit.required_gpus").unwrap();
         fs::write(&path, "submit = 1\n").unwrap();
 
         assert!(

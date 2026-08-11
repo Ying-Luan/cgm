@@ -38,8 +38,12 @@ pub(crate) enum Request {
         id: usize,
         /// Optional current environment snapshot
         envs: Option<HashMap<String, String>>,
-        /// Optional GPU count override
-        gpus: Option<usize>,
+        /// Optional allowed GPU ID override
+        allowed_gpus: Option<Vec<usize>>,
+        /// Optional dependency override
+        dependencies: Option<Vec<usize>>,
+        /// Optional required GPU count override
+        required_gpus: Option<usize>,
         /// Optional log path override
         log_path: Option<String>,
         /// Requesting username
