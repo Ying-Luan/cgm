@@ -13,7 +13,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
     db::schema::initialize_db,
-    types::{Job, JobStatus},
+    types::{GpuSelection, Job, JobStatus},
 };
 
 /// Get current Unix timestamp
@@ -511,8 +511,8 @@ impl DataBase {
             let command_json: String = row.get(3)?;
             let command: Vec<String> = serde_json::from_str(&command_json).unwrap_or_default();
             let allowed_gpus_json: String = row.get(4)?;
-            let allowed_gpus: Option<Vec<usize>> =
-                serde_json::from_str(&allowed_gpus_json).unwrap_or_default();
+            let allowed_gpus: GpuSelection =
+                serde_json::from_str(&allowed_gpus_json).unwrap_or(GpuSelection::All);
             let required_gpus_int: i64 = row.get(5)?;
             let envs_json: String = row.get(6)?;
             let envs: HashMap<String, String> =
@@ -553,7 +553,7 @@ mod tests {
     use super::DataBase;
     use crate::{
         db::schema::initialize_db,
-        types::{Job, JobStatus},
+        types::{GpuSelection, Job, JobStatus},
     };
 
     /// Create an in-memory database with the production schema and constraints.
@@ -571,7 +571,7 @@ mod tests {
             status: JobStatus::Pending,
             username: "user".to_string(),
             command: vec!["true".to_string()],
-            allowed_gpus: None,
+            allowed_gpus: GpuSelection::All,
             required_gpus: 1,
             envs: HashMap::new(),
             log_path: format!("/tmp/job-{}.log", id),
@@ -664,13 +664,13 @@ mod tests {
     fn persists_allowed_gpus() {
         let db = database();
         let mut job = job(1);
-        job.allowed_gpus = Some(vec![0, 2]);
+        job.allowed_gpus = GpuSelection::Allowed(vec![0, 2]);
 
         db.insert_job_with_dependencies(&[], &mut job).unwrap();
 
         assert_eq!(
             db.get_job_by_id(1).unwrap().unwrap().allowed_gpus,
-            Some(vec![0, 2])
+            GpuSelection::Allowed(vec![0, 2])
         );
     }
 

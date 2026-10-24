@@ -21,7 +21,7 @@ pub(crate) fn initialize_db(conn: &Connection) -> rusqlite::Result<()> {
             status                 TEXT    NOT NULL CHECK (status IN ('unknown', 'blocked', 'pending', 'running', 'completed', 'failed', 'cancelled')),
             username               TEXT    NOT NULL,
             command                TEXT    NOT NULL,  -- JSON array, e.g. [\"python\",\"main.py\"]
-            allowed_gpus           TEXT    NOT NULL,  -- JSON array
+            allowed_gpus           TEXT    NOT NULL,  -- Serialized GpuSelection
             required_gpus          INTEGER NOT NULL,
             envs                   TEXT    NOT NULL,  -- JSON object, e.g. {\"KEY\":\"value\"}
             log_path               TEXT    NOT NULL,

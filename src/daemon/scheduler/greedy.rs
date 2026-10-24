@@ -24,7 +24,7 @@ impl Scheduler for GreedyScheduler {
         for job in pending_jobs {
             let available_gpus = {
                 let gpu_pool = gpu_pool.lock().unwrap();
-                gpu_pool.find_available_gpus(job.allowed_gpus.as_deref(), job.required_gpus)
+                gpu_pool.find_available_gpus(&job.allowed_gpus, job.required_gpus)
             };
 
             if let Ok(gpus) = available_gpus {

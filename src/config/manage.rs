@@ -37,6 +37,8 @@ enum ConfigKey {
     StartScheduler,
     /// `start.threshold`.
     StartThreshold,
+    /// `submit.allow_gpus`.
+    SubmitAllowGpus,
     /// `submit.detach`.
     SubmitDetach,
     /// `submit.required_gpus`.
@@ -45,15 +47,16 @@ enum ConfigKey {
 
 impl ConfigKey {
     /// All known configuration keys in display order.
-    const ALL: [ConfigKey; 8] = [
+    const ALL: [ConfigKey; 9] = [
+        ConfigKey::ListLimit,
+        ConfigKey::RerunDetach,
         ConfigKey::StartGpus,
         ConfigKey::StartInterval,
         ConfigKey::StartScheduler,
         ConfigKey::StartThreshold,
+        ConfigKey::SubmitAllowGpus,
         ConfigKey::SubmitDetach,
         ConfigKey::SubmitRequiredGpus,
-        ConfigKey::RerunDetach,
-        ConfigKey::ListLimit,
     ];
 
     /// Get the section, field, and dotted key string of this key.
@@ -69,6 +72,7 @@ impl ConfigKey {
             Self::StartInterval => ("start", "interval", "start.interval"),
             Self::StartScheduler => ("start", "scheduler", "start.scheduler"),
             Self::StartThreshold => ("start", "threshold", "start.threshold"),
+            Self::SubmitAllowGpus => ("submit", "allow_gpus", "submit.allow_gpus"),
             Self::SubmitDetach => ("submit", "detach", "submit.detach"),
             Self::SubmitRequiredGpus => ("submit", "required_gpus", "submit.required_gpus"),
         }
@@ -113,6 +117,7 @@ impl ConfigKey {
                 value(parsed)
             }
             Self::StartGpus => value(raw_value),
+            Self::SubmitAllowGpus => value(raw_value),
             Self::StartInterval | Self::StartThreshold => {
                 let parsed = raw_value
                     .parse::<u32>()
@@ -151,6 +156,7 @@ impl ConfigKey {
             Self::StartInterval => config.start.interval.value_and_source(),
             Self::StartScheduler => config.start.scheduler.value_and_source(),
             Self::StartThreshold => config.start.threshold.value_and_source(),
+            Self::SubmitAllowGpus => config.submit.allow_gpus.value_and_source(),
             Self::SubmitDetach => config.submit.detach.value_and_source(),
             Self::SubmitRequiredGpus => config.submit.required_gpus.value_and_source(),
         }
@@ -173,6 +179,7 @@ impl ConfigKey {
             Self::StartInterval => config.start.as_ref()?.interval.map(|v| v.to_string()),
             Self::StartScheduler => config.start.as_ref()?.scheduler.map(|v| v.to_string()),
             Self::StartThreshold => config.start.as_ref()?.threshold.map(|v| v.to_string()),
+            Self::SubmitAllowGpus => config.submit.as_ref()?.allow_gpus.clone(),
             Self::SubmitDetach => config.submit.as_ref()?.detach.map(|v| v.to_string()),
             Self::SubmitRequiredGpus => {
                 config.submit.as_ref()?.required_gpus.map(|v| v.to_string())
@@ -204,6 +211,7 @@ impl FromStr for ConfigKey {
             "start.interval" => Ok(Self::StartInterval),
             "start.scheduler" => Ok(Self::StartScheduler),
             "start.threshold" => Ok(Self::StartThreshold),
+            "submit.allow_gpus" => Ok(Self::SubmitAllowGpus),
             "submit.detach" => Ok(Self::SubmitDetach),
             "submit.required_gpus" => Ok(Self::SubmitRequiredGpus),
             _ => Err(format!("Unknown config key: {}", key)),

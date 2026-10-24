@@ -155,16 +155,7 @@ pub(crate) fn show_list(limit: Option<usize>) {
             ]);
 
             for job in jobs {
-                let allowed_gpus = job.allowed_gpus.map_or_else(
-                    || "all".to_string(),
-                    |allowed_gpus| {
-                        allowed_gpus
-                            .iter()
-                            .map(usize::to_string)
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    },
-                );
+                let allowed_gpus = job.allowed_gpus.to_string();
                 let dependencies = if job.dependencies.is_empty() {
                     "-".to_string()
                 } else {

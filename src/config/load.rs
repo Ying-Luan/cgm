@@ -42,12 +42,12 @@ pub(super) fn load_effective_from(
 ) -> Result<EffectiveConfig, String> {
     let mut effective = EffectiveConfig::default();
     if let Some(global) = read_config(global_path, ConfigScope::Global)? {
-        global.apply_to(&mut effective, Source::Global);
+        global.apply_to(&mut effective, Source::Global)?;
     }
     if let Some(user_path) = user_path
         && let Some(user) = read_config(user_path, ConfigScope::User)?
     {
-        user.apply_to(&mut effective, Source::User);
+        user.apply_to(&mut effective, Source::User)?;
     }
 
     Ok(effective)
@@ -136,13 +136,17 @@ mod tests {
         let user = dir.join("user.toml");
         fs::write(
             &global,
-            "[submit]\ndetach = true\nrequired_gpus = 2\n[list]\nlimit = 40\n",
+            "[submit]\nallow_gpus = \"0,2\"\ndetach = true\nrequired_gpus = 2\n[list]\nlimit = 40\n",
         )
         .unwrap();
         fs::write(&user, "[submit]\nrequired_gpus = 1\n").unwrap();
 
         let config = load_effective_from(&global, Some(&user)).unwrap();
         assert!(config.submit.detach.value);
+        assert_eq!(
+            config.submit.allow_gpus.value,
+            crate::types::GpuSelection::Allowed(vec![0, 2])
+        );
         assert_eq!(config.submit.required_gpus.value, 1);
         assert_eq!(config.list.limit.value, 40);
         fs::remove_dir_all(dir).unwrap();

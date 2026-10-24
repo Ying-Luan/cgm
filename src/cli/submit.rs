@@ -7,7 +7,7 @@ use crate::{
     config::{load_effective, validate_effective},
     macros::green,
     os::{get_current_username, open_log_with_less},
-    types::{EffectiveSubmitConfig, JobRequest},
+    types::{EffectiveSubmitConfig, GpuSelection, JobRequest},
     utils::parse_comma_separated_ids,
 };
 
@@ -35,24 +35,24 @@ pub(super) fn run(
 ) {
     require_daemon();
 
-    let config =
-        merge_config(detach, follow, require_gpus).unwrap_or_else(|error| exit_with_error(&error));
-    let allowed_gpus = parse_comma_separated_ids(allow_gpus.as_deref())
+    let config = merge_config(allow_gpus, detach, follow, require_gpus)
         .unwrap_or_else(|error| exit_with_error(&error));
     let dependencies = parse_comma_separated_ids(depends_on.as_deref())
         .unwrap_or_else(|error| exit_with_error(&error))
         .unwrap_or_default();
 
-    if allowed_gpus
-        .as_ref()
-        .is_some_and(|allowed_gpus| config.required_gpus.value > allowed_gpus.len())
+    if config
+        .allow_gpus
+        .value
+        .len()
+        .is_some_and(|allowed_count| config.required_gpus.value > allowed_count)
     {
         exit_with_error("require-gpus cannot exceed the number of allowed GPUs");
     }
 
     let request = JobRequest {
         username: get_current_username(),
-        allowed_gpus,
+        allowed_gpus: config.allow_gpus.value,
         command,
         dependencies,
         required_gpus: config.required_gpus.value,
@@ -83,6 +83,7 @@ pub(super) fn run(
 ///
 /// # Arguments
 ///
+/// * `allow_gpus` - Optional comma-separated GPU IDs from CLI
 /// * `detach` - Detach flag from CLI
 /// * `follow` - Follow flag from CLI
 /// * `require_gpus` - Optional number of GPUs from CLI
@@ -91,11 +92,15 @@ pub(super) fn run(
 ///
 /// The effective submit configuration or an error message.
 fn merge_config(
+    allow_gpus: Option<String>,
     detach: bool,
     follow: bool,
     require_gpus: Option<usize>,
 ) -> Result<EffectiveSubmitConfig, String> {
     let mut config = load_effective()?;
+    if let Some(allow_gpus) = allow_gpus {
+        config.submit.allow_gpus.value = GpuSelection::parse(&allow_gpus)?;
+    }
     if detach {
         config.submit.detach.value = true;
     } else if follow {

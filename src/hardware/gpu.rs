@@ -8,7 +8,7 @@ use nvml_wrapper::Nvml;
 
 use crate::{
     macros::red,
-    types::{GpuInfo, GpuPrintInfo, GpuState},
+    types::{GpuInfo, GpuPrintInfo, GpuSelection, GpuState},
 };
 
 /// GPU manager struct
@@ -228,14 +228,14 @@ impl GpuManager {
     /// Available GPU index list, error if not enough GPUs
     pub(crate) fn find_available_gpus(
         &self,
-        allowed_gpus: Option<&[usize]>,
+        selection: &GpuSelection,
         count: usize,
     ) -> Result<Vec<usize>, String> {
         // Get all Idle GPU indices
         let available: Vec<usize> = self
             .find_gpu_ids_by_state(GpuState::Idle)
             .into_iter()
-            .filter(|id| allowed_gpus.is_none_or(|allowed| allowed.contains(id)))
+            .filter(|id| selection.allows(*id))
             .collect();
 
         if available.len() < count {

@@ -15,7 +15,9 @@ use crate::{
 ///
 /// Whether the effective configuration is valid or not.
 pub(crate) fn validate_effective(config: &EffectiveConfig) -> Result<(), String> {
-    validate_gpus(&config.start.gpus.value)?;
+    if config.list.limit.value == 0 {
+        return Err("list.limit must be greater than 0".to_string());
+    }
     if config.start.interval.value == 0 {
         return Err("start.interval must be greater than 0".to_string());
     }
@@ -24,9 +26,6 @@ pub(crate) fn validate_effective(config: &EffectiveConfig) -> Result<(), String>
     }
     if config.submit.required_gpus.value == 0 {
         return Err("submit.required_gpus must be greater than 0".to_string());
-    }
-    if config.list.limit.value == 0 {
-        return Err("list.limit must be greater than 0".to_string());
     }
 
     Ok(())
@@ -46,9 +45,12 @@ pub(super) fn validate_config(config: &Config, scope: ConfigScope) -> Result<(),
     if scope == ConfigScope::User && config.start.is_some() {
         return Err("start settings are only allowed in the global config".to_string());
     }
+    if config.list.as_ref().and_then(|list| list.limit) == Some(0) {
+        return Err("list.limit must be greater than 0".to_string());
+    }
     if let Some(start) = &config.start {
         if let Some(gpus) = &start.gpus {
-            validate_gpus(gpus)?;
+            validate_gpu_selection(gpus, "start.gpus")?;
         }
         if start.interval == Some(0) {
             return Err("start.interval must be greater than 0".to_string());
@@ -57,35 +59,33 @@ pub(super) fn validate_config(config: &Config, scope: ConfigScope) -> Result<(),
             return Err("start.threshold must be between 0 and 100".to_string());
         }
     }
-    if config
-        .submit
-        .as_ref()
-        .and_then(|submit| submit.required_gpus)
-        == Some(0)
-    {
-        return Err("submit.required_gpus must be greater than 0".to_string());
-    }
-    if config.list.as_ref().and_then(|list| list.limit) == Some(0) {
-        return Err("list.limit must be greater than 0".to_string());
+    if let Some(submit) = &config.submit {
+        if let Some(allow_gpus) = &submit.allow_gpus {
+            validate_gpu_selection(allow_gpus, "submit.allow_gpus")?;
+        }
+        if submit.required_gpus == Some(0) {
+            return Err("submit.required_gpus must be greater than 0".to_string());
+        }
     }
 
     Ok(())
 }
 
-/// Validate the syntax of a daemon GPU selection.
+/// Validate a GPU selection configuration value.
 ///
 /// # Arguments
 ///
-/// * `gpus` - A string containing the GPU selection.
+/// * `value` - GPU selection, either `all` or a comma-separated list of IDs.
+/// * `key` - Configuration key used in error messages.
 ///
 /// # Returns
 ///
-/// * Whether the GPU selection is valid or not.
-fn validate_gpus(gpus: &str) -> Result<(), String> {
-    if gpus == "all" {
+/// Whether the GPU selection is valid or not.
+fn validate_gpu_selection(value: &str, key: &str) -> Result<(), String> {
+    if value == "all" {
         return Ok(());
     }
-    parse_comma_separated_ids(Some(gpus))
+    parse_comma_separated_ids(Some(value))
         .map(|_| ())
-        .map_err(|error| format!("Invalid start.gpus: {}", error))
+        .map_err(|error| format!("Invalid {}: {}", key, error))
 }

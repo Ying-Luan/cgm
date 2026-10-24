@@ -85,11 +85,7 @@ impl Scheduler for FifoScheduler {
             let already_reserved = self.reserved_for_job(job.id);
             let available: Vec<usize> = idle
                 .iter()
-                .filter(|id| {
-                    job.allowed_gpus
-                        .as_ref()
-                        .is_none_or(|allowed| allowed.contains(id))
-                })
+                .filter(|id| job.allowed_gpus.allows(**id))
                 .copied()
                 .collect();
             let needed = job.required_gpus;

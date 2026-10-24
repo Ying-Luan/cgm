@@ -14,8 +14,7 @@ use crate::{
     db::check_db_compatible,
     macros::{green, yellow},
     os::require_root,
-    types::{EffectiveStartConfig, SchedulerKind},
-    utils::parse_comma_separated_ids,
+    types::{EffectiveStartConfig, GpuSelection, SchedulerKind},
 };
 
 use super::utils::exit_with_error;
@@ -72,15 +71,13 @@ pub(super) fn run(
         let device_count = nvml
             .device_count()
             .expect("Failed to query NVML device count") as usize;
-        if config.gpus.value == "all" {
-            (0..device_count).collect()
-        } else {
-            parse_comma_separated_ids(Some(&config.gpus.value))
-                .unwrap_or_else(|error| exit_with_error(&error))
-                .unwrap_or_default()
-                .into_iter()
+        match &config.gpus.value {
+            GpuSelection::All => (0..device_count).collect(),
+            GpuSelection::Allowed(ids) => ids
+                .iter()
+                .copied()
                 .filter(|&id| id < device_count)
-                .collect()
+                .collect(),
         }
     };
 
@@ -125,7 +122,7 @@ fn merge_config(
 ) -> Result<EffectiveStartConfig, String> {
     let mut config = load_global_effective()?;
     if let Some(gpus) = gpus {
-        config.start.gpus.value = gpus;
+        config.start.gpus.value = GpuSelection::parse(&gpus)?;
     }
     if let Some(interval) = interval {
         config.start.interval.value = interval;

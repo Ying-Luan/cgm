@@ -7,7 +7,7 @@ use crate::{
     config::{load_effective, validate_effective},
     macros::green,
     os::open_log_with_less,
-    types::EffectiveRerunConfig,
+    types::{EffectiveRerunConfig, GpuSelection},
     utils::parse_comma_separated_ids,
 };
 
@@ -41,7 +41,9 @@ pub(super) fn run(
         exit_with_error("required-gpus must be greater than 0");
     }
     let config = merge_config(detach, follow).unwrap_or_else(|error| exit_with_error(&error));
-    let allowed_gpus = parse_comma_separated_ids(allow_gpus.as_deref())
+    let allowed_gpus = allow_gpus
+        .map(|value| GpuSelection::parse(&value))
+        .transpose()
         .unwrap_or_else(|error| exit_with_error(&error));
     let dependencies = parse_comma_separated_ids(depends_on.as_deref())
         .unwrap_or_else(|error| exit_with_error(&error));

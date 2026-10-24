@@ -64,7 +64,7 @@ cgm submit [OPTIONS] -- <COMMAND>
 
 | 参数名称 | 简写 | 默认值 | 说明 | 配置键 |
 | ------- | ---- | ----- | ---- | --- |
-| `--allow-gpus <ID,ID,...>` | `-G <ID,ID,...>` | ` ` | 限制任务可使用的 GPU ID，使用逗号分隔 | ` ` |
+| `--allow-gpus <ID,ID,...>` | `-G <ID,ID,...>` | ` ` | 限制任务可使用的 GPU ID，使用逗号分隔 | `submit.allow_gpus` |
 | `--depends-on <ID,ID,...>` | ` ` | ` ` | 指定必须成功完成的前置任务，使用逗号分隔 | ` ` |
 | `--detach` | `-d` | `false` | 开启分离模式。任务提交后立即返回，不阻塞终端 | `submit.detach` |
 | `--follow` | ` ` | `true` | 任务提交后打开 `less`，阻塞终端 | `submit.detach` |

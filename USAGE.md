@@ -64,7 +64,7 @@ cgm submit [OPTIONS] -- <COMMAND>
 
 | Option | Short | Default | Description | Config Key |
 | ------ | ----- | ------- | ----------- | --- |
-| `--allow-gpus <ID,ID,...>` | `-G <ID,ID,...>` | ` ` | Restrict GPU IDs this job may use, comma-separated | ` ` |
+| `--allow-gpus <ID,ID,...>` | `-G <ID,ID,...>` | ` ` | Restrict GPU IDs this job may use, comma-separated | `submit.allow_gpus` |
 | `--depends-on <ID,ID,...>` | ` ` | ` ` | Comma-separated prerequisite jobs that must complete successfully | ` ` |
 | `--detach` | `-d` | `false` | Detach mode. Returns immediately without blocking the terminal | `submit.detach` |
 | `--follow` | ` ` | `true` | Open `less` after submission and follow the log, blocks the terminal | `submit.detach` |

@@ -7,7 +7,7 @@ use std::{collections::HashMap, io::Write, os::unix::net::UnixStream};
 use crate::{
     constants::SOCKET_PATH,
     os::get_current_username,
-    types::{DeleteTarget, GpuInfo, JobPrintInfo, JobRequest, Request, Response},
+    types::{DeleteTarget, GpuInfo, GpuSelection, JobPrintInfo, JobRequest, Request, Response},
 };
 
 /// Send request to daemon and receive response
@@ -84,7 +84,7 @@ pub(crate) fn submit_job(request: JobRequest) -> Result<(usize, String), String>
 pub(crate) fn rerun_job(
     id: usize,
     envs: Option<HashMap<String, String>>,
-    allowed_gpus: Option<Vec<usize>>,
+    allowed_gpus: Option<GpuSelection>,
     dependencies: Option<Vec<usize>>,
     required_gpus: Option<usize>,
     log_path: Option<String>,

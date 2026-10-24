@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::constants::JOB_LOG_FOLDER;
 
+use super::gpu::GpuSelection;
+
 /// Job struct (used for database storage and scheduling)
 pub(crate) struct Job {
     /// Job ID
@@ -19,8 +21,8 @@ pub(crate) struct Job {
     pub(crate) username: String,
     /// Command
     pub(crate) command: Vec<String>,
-    /// GPU IDs this job may use, None for all managed GPUs
-    pub(crate) allowed_gpus: Option<Vec<usize>>,
+    /// GPU selection this job may use.
+    pub(crate) allowed_gpus: GpuSelection,
     /// Number of GPUs requested
     pub(crate) required_gpus: usize,
     /// Environment variables snapshot
@@ -130,8 +132,8 @@ impl JobStatus {
 pub(crate) struct JobRequest {
     /// Submitting user
     pub(crate) username: String,
-    /// GPU IDs this job may use, None for all managed GPUs
-    pub(crate) allowed_gpus: Option<Vec<usize>>,
+    /// GPU selection this job may use.
+    pub(crate) allowed_gpus: GpuSelection,
     /// Command
     pub(crate) command: Vec<String>,
     /// Prerequisite job IDs
@@ -157,8 +159,8 @@ pub(crate) struct JobPrintInfo {
     pub(crate) username: String,
     /// Command
     pub(crate) command: Vec<String>,
-    /// GPU IDs this job may use, None for all managed GPUs
-    pub(crate) allowed_gpus: Option<Vec<usize>>,
+    /// GPU selection this job may use.
+    pub(crate) allowed_gpus: GpuSelection,
     /// Prerequisite job IDs
     pub(crate) dependencies: Vec<usize>,
     /// Number of GPUs requested

@@ -6,8 +6,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{
-    gpu::GpuInfo,
+use super::{
+    gpu::{GpuInfo, GpuSelection},
     job::{JobPrintInfo, JobRequest, JobStatus},
 };
 
@@ -38,8 +38,8 @@ pub(crate) enum Request {
         id: usize,
         /// Optional current environment snapshot
         envs: Option<HashMap<String, String>>,
-        /// Optional allowed GPU ID override
-        allowed_gpus: Option<Vec<usize>>,
+        /// Optional allowed GPU selection override
+        allowed_gpus: Option<GpuSelection>,
         /// Optional dependency override
         dependencies: Option<Vec<usize>>,
         /// Optional required GPU count override

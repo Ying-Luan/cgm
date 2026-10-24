@@ -21,7 +21,9 @@ use crate::{
     db::DbPool,
     hardware::GpuPool,
     macros::{green, red},
-    types::{DeleteTarget, Job, JobPrintInfo, JobRequest, JobStatus, Request, Response},
+    types::{
+        DeleteTarget, GpuSelection, Job, JobPrintInfo, JobRequest, JobStatus, Request, Response,
+    },
 };
 
 /// Server handling client requests via Unix Domain Socket
@@ -206,7 +208,7 @@ impl Server {
         &self,
         id: usize,
         envs: Option<HashMap<String, String>>,
-        allowed_gpus: Option<Vec<usize>>,
+        allowed_gpus: Option<GpuSelection>,
         dependencies: Option<Vec<usize>>,
         required_gpus: Option<usize>,
         log_path: Option<String>,
@@ -225,7 +227,7 @@ impl Server {
 
         let request = JobRequest {
             username: job.username,
-            allowed_gpus: allowed_gpus.or(job.allowed_gpus),
+            allowed_gpus: allowed_gpus.unwrap_or(job.allowed_gpus),
             command: job.command,
             dependencies: dependencies.unwrap_or_default(),
             required_gpus: required_gpus.unwrap_or(job.required_gpus),
@@ -254,16 +256,11 @@ impl Server {
         let dependencies = req.dependencies.clone();
         let mut job = Job::from_request(q.get_max_id().unwrap_or(0) + 1, req);
 
-        if let Some(allowed_gpus) = &job.allowed_gpus
-            && !self.gpu_pool.lock().unwrap().manages_gpu_ids(allowed_gpus)
+        if let Some(allowed_gpus) = job.allowed_gpus.ids()
+            && (!self.gpu_pool.lock().unwrap().manages_gpu_ids(allowed_gpus)
+                || job.required_gpus > allowed_gpus.len())
         {
-            return Err("Allowed GPU IDs must be managed by the daemon".to_string());
-        }
-
-        if let Some(allowed_gpus) = &job.allowed_gpus
-            && job.required_gpus > allowed_gpus.len()
-        {
-            return Err("require-gpus cannot exceed the number of allowed GPUs".to_string());
+            return Err("Invalid allowed GPU selection for required GPU count".to_string());
         }
 
         q.insert_job_with_dependencies(&dependencies, &mut job)?;

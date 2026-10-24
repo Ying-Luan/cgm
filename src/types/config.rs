@@ -7,7 +7,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::SchedulerKind;
+use crate::types::{GpuSelection, SchedulerKind};
 
 /// Configuration values read from one file.
 #[derive(Default, Deserialize, Serialize)]
@@ -57,6 +57,8 @@ pub(crate) struct StartConfig {
 #[derive(Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct SubmitConfig {
+    /// GPU IDs allowed for submitted jobs, or `all`.
+    pub(crate) allow_gpus: Option<String>,
     /// Whether to return without following the submitted job log.
     pub(crate) detach: Option<bool>,
     /// Number of GPUs requested by a job.
@@ -100,7 +102,11 @@ impl Config {
     ///
     /// * `effective` - The effective configuration to which the fields will be applied.
     /// * `source` - The source layer of this configuration.
-    pub(crate) fn apply_to(&self, effective: &mut EffectiveConfig, source: Source) {
+    pub(crate) fn apply_to(
+        &self,
+        effective: &mut EffectiveConfig,
+        source: Source,
+    ) -> Result<(), String> {
         if let Some(list) = &self.list
             && let Some(limit) = list.limit
         {
@@ -120,7 +126,7 @@ impl Config {
         if let Some(start) = &self.start {
             if let Some(gpus) = &start.gpus {
                 effective.start.gpus = WithSource {
-                    value: gpus.clone(),
+                    value: GpuSelection::parse(gpus)?,
                     source,
                 };
             }
@@ -144,6 +150,12 @@ impl Config {
             }
         }
         if let Some(submit) = &self.submit {
+            if let Some(allow_gpus) = &submit.allow_gpus {
+                effective.submit.allow_gpus = WithSource {
+                    value: GpuSelection::parse(allow_gpus)?,
+                    source,
+                };
+            }
             if let Some(detach) = submit.detach {
                 effective.submit.detach = WithSource {
                     value: detach,
@@ -157,6 +169,8 @@ impl Config {
                 };
             }
         }
+
+        Ok(())
     }
 }
 
@@ -170,12 +184,13 @@ impl From<&EffectiveConfig> for Config {
                 detach: Some(effective.rerun.detach.value),
             }),
             start: Some(StartConfig {
-                gpus: Some(effective.start.gpus.value.clone()),
+                gpus: Some(effective.start.gpus.value.to_string()),
                 interval: Some(effective.start.interval.value),
                 scheduler: Some(effective.start.scheduler.value),
                 threshold: Some(effective.start.threshold.value),
             }),
             submit: Some(SubmitConfig {
+                allow_gpus: Some(effective.submit.allow_gpus.value.to_string()),
                 detach: Some(effective.submit.detach.value),
                 required_gpus: Some(effective.submit.required_gpus.value),
             }),
@@ -250,7 +265,7 @@ pub(crate) struct EffectiveRerunConfig {
 #[derive(Debug, PartialEq)]
 pub(crate) struct EffectiveStartConfig {
     /// GPU IDs managed by the daemon, or `all`.
-    pub(crate) gpus: WithSource<String>,
+    pub(crate) gpus: WithSource<GpuSelection>,
     /// Scheduling interval in seconds.
     pub(crate) interval: WithSource<u32>,
     /// Scheduling strategy.
@@ -262,6 +277,8 @@ pub(crate) struct EffectiveStartConfig {
 /// Fully resolved job submission defaults.
 #[derive(Debug, PartialEq)]
 pub(crate) struct EffectiveSubmitConfig {
+    /// GPU IDs allowed for submitted jobs, or `all`.
+    pub(crate) allow_gpus: WithSource<GpuSelection>,
     /// Whether to return without following the submitted job log.
     pub(crate) detach: WithSource<bool>,
     /// Number of GPUs requested by a job.
@@ -278,12 +295,13 @@ impl Default for EffectiveConfig {
                 detach: WithSource::builtin(false),
             },
             start: EffectiveStartConfig {
-                gpus: WithSource::builtin("all".to_string()),
+                gpus: WithSource::builtin(GpuSelection::All),
                 interval: WithSource::builtin(10),
                 scheduler: WithSource::builtin(SchedulerKind::Greedy),
                 threshold: WithSource::builtin(10),
             },
             submit: EffectiveSubmitConfig {
+                allow_gpus: WithSource::builtin(GpuSelection::All),
                 detach: WithSource::builtin(false),
                 required_gpus: WithSource::builtin(1),
             },
