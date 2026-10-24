@@ -230,12 +230,14 @@ enum Commands {
         all: bool,
         /// Show the latest N jobs
         #[arg(
-            short,
             long,
             help = "Show the latest N jobs; defaults to config or 20",
             conflicts_with = "all"
         )]
         limit: Option<usize>,
+        /// Show detailed field names and full commands
+        #[arg(short, long, help = "Show detailed field names and full commands")]
+        long_format: bool,
     },
     /// View job log
     Log {
@@ -303,7 +305,11 @@ pub(crate) fn run() {
         Commands::Cancel { id, force } => cancel::run(id, force),
         Commands::Delete { id, all, status } => delete::run(id, all, status),
         Commands::Status => status::run(),
-        Commands::List { all, limit } => list::run(all, limit),
+        Commands::List {
+            all,
+            limit,
+            long_format,
+        } => list::run(all, limit, long_format),
         Commands::Log { id } => log::run(id),
         Commands::Config { command } => config::run(command),
     }
@@ -372,5 +378,22 @@ mod tests {
         assert_eq!(allow_gpus.as_deref(), Some("0,2"));
         assert_eq!(depends_on.as_deref(), Some("1,2,3"));
         assert_eq!(require_gpus, Some(2));
+    }
+
+    #[test]
+    fn list_parses_long_format_and_limit() {
+        let cli = Cli::try_parse_from(["cgm", "list", "-l", "--limit", "10"]).unwrap();
+        let Commands::List {
+            all,
+            limit,
+            long_format,
+        } = cli.command
+        else {
+            panic!("expected list command");
+        };
+
+        assert!(!all);
+        assert_eq!(limit, Some(10));
+        assert!(long_format);
     }
 }

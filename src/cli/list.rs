@@ -16,13 +16,14 @@ use super::utils::{exit_with_error, require_daemon};
 ///
 /// * `all` - If true, show all jobs without limit
 /// * `limit` - Optional maximum number of jobs to show
-pub(super) fn run(all: bool, limit: Option<usize>) {
+/// * `long_format` - If true, show the detailed table with full field names and commands
+pub(super) fn run(all: bool, limit: Option<usize>, long_format: bool) {
     require_daemon();
 
     let config = merge_config(limit).unwrap_or_else(|error| exit_with_error(&error));
 
     let limit_param = if all { None } else { Some(config.limit.value) };
-    show_list(limit_param);
+    show_list(limit_param, long_format);
 }
 
 /// Merge CLI parameters and persistent configuration into effective list configuration.

@@ -154,7 +154,8 @@ cgm list [OPTIONS]
 | Option | Short | Default | Description | Config Key |
 | ------ | ----- | ------- | ----------- | --- |
 | `--all` | `-a` | `false` | Show all jobs without limit | ` ` |
-| `--limit <N>` | `-l <N>` | `20` | Show the latest N jobs | `list.limit` |
+| `--limit <N>` | ` ` | `20` | Show the latest N jobs | `list.limit` |
+| `--long-format` | `-l` | `false` | Show detailed field names and full commands | ` ` |
 
 `--all` and `--limit` are mutually exclusive. Only one can be specified.
 

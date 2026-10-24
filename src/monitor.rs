@@ -12,6 +12,9 @@ use crate::{
     macros::{green, yellow},
 };
 
+/// Maximum command length shown in the compact job list.
+const COMMAND_PREVIEW_LENGTH: usize = 32;
+
 /// Format Unix timestamp to YYYY-MM-DD HH:MM:SS string
 ///
 /// # Arguments
@@ -59,6 +62,34 @@ fn calculate_duration(start: Option<i64>, end: Option<i64>) -> String {
         (Some(_), None) => "running".to_string(),
         _ => "-".to_string(),
     }
+}
+
+/// Truncate a command for compact table output.
+///
+/// # Arguments
+///
+/// * `command` - The command string to truncate.
+///
+/// # Returns
+///
+/// The original command if it fits within the preview limit; otherwise, a
+/// shortened command ending with `...`.
+fn truncate_command(mut command: String) -> String {
+    if command.chars().count() <= COMMAND_PREVIEW_LENGTH {
+        return command;
+    }
+
+    let prefix_length = COMMAND_PREVIEW_LENGTH.saturating_sub(3);
+    let prefix_end = command
+        .char_indices()
+        .nth(prefix_length)
+        // Safe: the length check guarantees this boundary exists.
+        .expect("long command must contain the preview prefix")
+        .0;
+    command.truncate(prefix_end);
+    // No reallocation: truncation preserves enough capacity for the suffix.
+    command.push_str("...");
+    command
 }
 
 /// Display status dashboard
@@ -131,7 +162,8 @@ pub(crate) fn show_status() {
 /// # Arguments
 ///
 /// * `limit` - Limit number of jobs returned, None for all
-pub(crate) fn show_list(limit: Option<usize>) {
+/// * `long_format` - Show detailed field names and full commands
+pub(crate) fn show_list(limit: Option<usize>, long_format: bool) {
     match client::list_jobs(limit) {
         Ok((jobs, total)) => {
             println!("--- Jobs ({}/{}) ---", jobs.len(), total);
@@ -141,18 +173,34 @@ pub(crate) fn show_list(limit: Option<usize>) {
             }
 
             let mut table = Table::new();
-            table.load_preset(NOTHING).set_header(vec![
-                "ID",
-                "Status",
-                "User",
-                "Required GPUs",
-                "Allowed GPUs",
-                "Depends On",
-                "Remaining",
-                "Start",
-                "Duration",
-                "Command",
-            ]);
+            let headers = if long_format {
+                vec![
+                    "ID",
+                    "Status",
+                    "User",
+                    "Required GPUs",
+                    "Allowed GPUs",
+                    "Depends On",
+                    "Remaining",
+                    "Start",
+                    "Duration",
+                    "Command",
+                ]
+            } else {
+                vec![
+                    "ID",
+                    "Status",
+                    "User",
+                    "Req GPU",
+                    "Allow GPU",
+                    "Deps",
+                    "Remain",
+                    "Start",
+                    "Duration",
+                    "Cmd",
+                ]
+            };
+            table.load_preset(NOTHING).set_header(headers);
 
             for job in jobs {
                 let allowed_gpus = job.allowed_gpus.to_string();
@@ -175,6 +223,12 @@ pub(crate) fn show_list(limit: Option<usize>) {
                     .map(format_timestamp)
                     .unwrap_or_else(|| "-".to_string());
                 let duration_str = calculate_duration(job.start_time, job.end_time);
+                let command = job.command.join(" ");
+                let command = if long_format {
+                    command
+                } else {
+                    truncate_command(command)
+                };
                 table.add_row(vec![
                     Cell::new(job.id.to_string()),
                     Cell::new(job.status.as_str()).fg(job.status.color()),
@@ -185,7 +239,7 @@ pub(crate) fn show_list(limit: Option<usize>) {
                     Cell::new(remaining),
                     Cell::new(start_str),
                     Cell::new(duration_str),
-                    Cell::new(job.command.join(" ")),
+                    Cell::new(command),
                 ]);
             }
 
@@ -195,5 +249,27 @@ pub(crate) fn show_list(limit: Option<usize>) {
             println!("--- Jobs ---");
             println!("{}", yellow!("(failed to query: {})", e));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{COMMAND_PREVIEW_LENGTH, truncate_command};
+
+    #[test]
+    fn keeps_short_commands_unchanged() {
+        assert_eq!(
+            truncate_command("python train.py".to_string()),
+            "python train.py"
+        );
+    }
+
+    #[test]
+    fn truncates_long_commands_with_an_ellipsis() {
+        let command = "x".repeat(COMMAND_PREVIEW_LENGTH + 1);
+        let truncated = truncate_command(command);
+
+        assert_eq!(truncated.chars().count(), COMMAND_PREVIEW_LENGTH);
+        assert!(truncated.ends_with("..."));
     }
 }
