@@ -342,7 +342,11 @@ pub(crate) fn get(
 /// # Returns
 ///
 /// The table or an error message.
-pub(crate) fn show(effective: bool, scope: ConfigScope, source: bool) -> Result<Table, String> {
+pub(crate) fn show(
+    effective: bool,
+    scope: ConfigScope,
+    source: bool,
+) -> Result<Option<Table>, String> {
     let config = load_effective()?;
     let raw = if !effective {
         read_config(&config_path(scope)?, scope)?
@@ -362,7 +366,10 @@ pub(crate) fn show(effective: bool, scope: ConfigScope, source: bool) -> Result<
 
     for key in all_keys {
         let (value, src) = if !effective {
-            match key.raw_value(raw.as_ref().unwrap()) {
+            let Some(raw) = raw.as_ref() else {
+                break;
+            };
+            match key.raw_value(raw) {
                 Some(v) => (v, None),
                 None => continue,
             }
@@ -379,7 +386,11 @@ pub(crate) fn show(effective: bool, scope: ConfigScope, source: bool) -> Result<
         }
     }
 
-    Ok(table)
+    if table.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(table))
+    }
 }
 
 /// Validate the current scope's configuration file.

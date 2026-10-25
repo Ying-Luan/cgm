@@ -190,7 +190,11 @@ pub(super) fn run(command: ConfigCommand) {
             global,
             source,
         } => config::show(effective, ConfigScope::from(global), source).map(|table| {
-            println!("{table}",);
+            if let Some(table) = table {
+                println!("{table}");
+            } else {
+                println!("{}", yellow!("No configuration values are set."));
+            }
         }),
         ConfigCommand::Validate { global } => config::validate_current(ConfigScope::from(global))
             .map(|path| {
