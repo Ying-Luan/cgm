@@ -9,6 +9,8 @@ A lightweight GPU job scheduler
 
 [English](README.md) | [中文](README_zh.md)
 
+[Usage Docs](USAGE.md) | [使用文档](USAGE_zh.md)
+
 [GitHub](https://github.com/Ying-Luan/cgm) | [Gitee](https://gitee.com/ying_luan/cgm)
 
 </div>

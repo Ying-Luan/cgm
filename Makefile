@@ -2,15 +2,22 @@ PID_FILE := /tmp/cgm/cgm.pid
 INSTALL_DIR := /usr/local/bin
 INSTALL_PATH := $(INSTALL_DIR)/cgm
 
-.PHONY: list check-daemon install uninstall
+.PHONY: list check check-daemon install uninstall
 
 # List all available commands
 list:
 	@echo "Available commands:"
 	@echo "  list         - List all available commands"
+	@echo "  check        - Run formatting, lint, and test checks"
 	@echo "  check-daemon - Check if cgm daemon is running"
 	@echo "  install      - Build and install cgm to $(INSTALL_PATH)"
 	@echo "  uninstall    - Remove cgm from $(INSTALL_PATH)"
+
+# Run formatting, lint, and test checks
+check:
+	cargo fmt -- --check
+	cargo clippy
+	cargo test
 
 # Check if cgm daemon is running
 check-daemon:
