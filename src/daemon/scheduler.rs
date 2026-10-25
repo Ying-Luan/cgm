@@ -106,7 +106,8 @@ fn launch_job(job: Job, gpus: Vec<usize>, db: DbPool, gpu_pool: GpuPool) {
     }
     {
         let db = db.lock().unwrap();
-        db.update_status(job.id, JobStatus::Running).ok();
+        db.update_status(job.id, JobStatus::Running, Some(&gpus))
+            .ok();
     }
 
     let db_clone = Arc::clone(&db);
@@ -144,7 +145,7 @@ fn launch_job(job: Job, gpus: Vec<usize>, db: DbPool, gpu_pool: GpuPool) {
         // Update job status in database and release allocated GPUs
         {
             let db = db_clone.lock().unwrap();
-            db.update_status(job_id, final_status).ok();
+            db.update_status(job_id, final_status, None).ok();
         }
         {
             let mut gpu_pool = gpu_pool_clone.lock().unwrap();

@@ -330,7 +330,7 @@ impl Server {
                         .queue
                         .lock()
                         .unwrap()
-                        .update_status(id, JobStatus::Cancelled)
+                        .update_status(id, JobStatus::Cancelled, None)
                     {
                         Ok(()) => Response::Cancel,
                         Err(error) => Response::Error {
@@ -376,7 +376,7 @@ impl Server {
         self.queue
             .lock()
             .unwrap()
-            .update_status(id, JobStatus::Cancelled)
+            .update_status(id, JobStatus::Cancelled, None)
             .map_err(|error| error.to_string())?;
         let gpus_to_release = self
             .gpu_pool
@@ -572,6 +572,7 @@ impl Server {
                 username: j.username,
                 command: j.command,
                 allowed_gpus: j.allowed_gpus,
+                allocated_gpus: j.allocated_gpus,
                 dependencies: dependencies.get(&j.id).cloned().unwrap_or_default(),
                 required_gpus: j.required_gpus,
                 remaining_dependencies: j.remaining_dependencies,

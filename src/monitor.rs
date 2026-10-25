@@ -180,6 +180,7 @@ pub(crate) fn show_list(limit: Option<usize>, long_format: bool) {
                     "User",
                     "Required GPUs",
                     "Allowed GPUs",
+                    "Allocated GPUs",
                     "Depends On",
                     "Remaining",
                     "Start",
@@ -193,6 +194,7 @@ pub(crate) fn show_list(limit: Option<usize>, long_format: bool) {
                     "User",
                     "Req GPU",
                     "Allow GPU",
+                    "Alloc GPU",
                     "Deps",
                     "Remain",
                     "Start",
@@ -204,6 +206,16 @@ pub(crate) fn show_list(limit: Option<usize>, long_format: bool) {
 
             for job in jobs {
                 let allowed_gpus = job.allowed_gpus.to_string();
+                let allocated_gpus = job
+                    .allocated_gpus
+                    .as_ref()
+                    .map(|gpus| {
+                        gpus.iter()
+                            .map(usize::to_string)
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    })
+                    .unwrap_or_else(|| "-".to_string());
                 let dependencies = if job.dependencies.is_empty() {
                     "-".to_string()
                 } else {
@@ -235,6 +247,7 @@ pub(crate) fn show_list(limit: Option<usize>, long_format: bool) {
                     Cell::new(job.username),
                     Cell::new(job.required_gpus.to_string()),
                     Cell::new(allowed_gpus),
+                    Cell::new(allocated_gpus),
                     Cell::new(dependencies),
                     Cell::new(remaining),
                     Cell::new(start_str),

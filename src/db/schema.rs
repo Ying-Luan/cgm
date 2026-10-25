@@ -22,6 +22,7 @@ pub(crate) fn initialize_db(conn: &Connection) -> rusqlite::Result<()> {
             username               TEXT    NOT NULL,
             command                TEXT    NOT NULL,  -- JSON array, e.g. [\"python\",\"main.py\"]
             allowed_gpus           TEXT    NOT NULL,  -- Serialized GpuSelection
+            allocated_gpus         TEXT,              -- JSON array of allocated GPU IDs
             required_gpus          INTEGER NOT NULL,
             envs                   TEXT    NOT NULL,  -- JSON object, e.g. {\"KEY\":\"value\"}
             log_path               TEXT    NOT NULL,

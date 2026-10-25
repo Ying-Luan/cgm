@@ -23,6 +23,8 @@ pub(crate) struct Job {
     pub(crate) command: Vec<String>,
     /// GPU selection this job may use.
     pub(crate) allowed_gpus: GpuSelection,
+    /// GPU IDs allocated to the job.
+    pub(crate) allocated_gpus: Option<Vec<usize>>,
     /// Number of GPUs requested
     pub(crate) required_gpus: usize,
     /// Environment variables snapshot
@@ -56,6 +58,7 @@ impl Job {
             username: req.username,
             command: req.command,
             allowed_gpus: req.allowed_gpus,
+            allocated_gpus: None,
             required_gpus: req.required_gpus,
             envs: req.envs,
             log_path,
@@ -161,6 +164,8 @@ pub(crate) struct JobPrintInfo {
     pub(crate) command: Vec<String>,
     /// GPU selection this job may use.
     pub(crate) allowed_gpus: GpuSelection,
+    /// GPU IDs allocated to the job.
+    pub(crate) allocated_gpus: Option<Vec<usize>>,
     /// Prerequisite job IDs
     pub(crate) dependencies: Vec<usize>,
     /// Number of GPUs requested

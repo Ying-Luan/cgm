@@ -48,6 +48,7 @@ pub(crate) fn check_db_compatible(conn: &Connection) -> bool {
             "username",
             "command",
             "allowed_gpus",
+            "allocated_gpus",
             "required_gpus",
             "envs",
             "log_path",
@@ -172,17 +173,24 @@ impl DataBase {
         let command_json = serde_json::to_string(&job.command).map_err(|e| e.to_string())?;
         let allowed_gpus_json =
             serde_json::to_string(&job.allowed_gpus).map_err(|e| e.to_string())?;
+        let allocated_gpus_json = job
+            .allocated_gpus
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|e| e.to_string())?;
         let envs_json = serde_json::to_string(&job.envs).map_err(|e| e.to_string())?;
         transaction
             .execute(
-                "INSERT INTO jobs (id, status, username, command, allowed_gpus, required_gpus, envs, log_path, cwd, remaining_dependencies, start_time, end_time)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                "INSERT INTO jobs (id, status, username, command, allowed_gpus, allocated_gpus, required_gpus, envs, log_path, cwd, remaining_dependencies, start_time, end_time)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 job.id as i64,
                 job.status.as_str(),
                 job.username,
                 command_json,
                 allowed_gpus_json,
+                allocated_gpus_json,
                 job.required_gpus as i32,
                 envs_json,
                 job.log_path,
@@ -246,7 +254,7 @@ impl DataBase {
             .map_err(|e| e.to_string())
     }
 
-    /// Update job status
+    /// Update job status and persist allocated GPUs when starting a job.
     ///
     /// Automatically maintains timestamps and prerequisite state transitions.
     ///
@@ -254,18 +262,31 @@ impl DataBase {
     ///
     /// * `job_id` - Job ID
     /// * `status` - New job status
+    /// * `allocated_gpus` - GPU IDs allocated when the job starts, or None for other status changes
     ///
     /// # Returns
     ///
     /// Update result, Ok(()) on success, error message on failure
-    pub(crate) fn update_status(&self, job_id: usize, status: JobStatus) -> rusqlite::Result<()> {
+    pub(crate) fn update_status(
+        &self,
+        job_id: usize,
+        status: JobStatus,
+        allocated_gpus: Option<&[usize]>,
+    ) -> rusqlite::Result<()> {
         let now = now_timestamp();
 
         match status {
             JobStatus::Running => {
+                let allocated_gpus = allocated_gpus.ok_or_else(|| {
+                    rusqlite::Error::InvalidParameterName(
+                        "running job requires allocated GPUs".to_string(),
+                    )
+                })?;
+                let allocated_gpus = serde_json::to_string(allocated_gpus)
+                    .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
                 self.conn.execute(
-                    "UPDATE jobs SET status = ?1, start_time = ?2 WHERE id = ?3",
-                    params![status.as_str(), now, job_id as i32],
+                    "UPDATE jobs SET status = 'running', allocated_gpus = ?1, start_time = ?2 WHERE id = ?3",
+                    params![allocated_gpus, now, job_id as i64],
                 )?;
             }
             JobStatus::Completed => {
@@ -499,7 +520,7 @@ impl DataBase {
         params: P,
     ) -> rusqlite::Result<Vec<Job>> {
         let sql = format!(
-            "SELECT id, status, username, command, allowed_gpus, required_gpus, envs, log_path, cwd, remaining_dependencies, start_time, end_time FROM jobs {}",
+            "SELECT id, status, username, command, allowed_gpus, allocated_gpus, required_gpus, envs, log_path, cwd, remaining_dependencies, start_time, end_time FROM jobs {}",
             condition
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -513,15 +534,18 @@ impl DataBase {
             let allowed_gpus_json: String = row.get(4)?;
             let allowed_gpus: GpuSelection =
                 serde_json::from_str(&allowed_gpus_json).unwrap_or(GpuSelection::All);
-            let required_gpus_int: i64 = row.get(5)?;
-            let envs_json: String = row.get(6)?;
+            let allocated_gpus_json: Option<String> = row.get(5)?;
+            let allocated_gpus =
+                allocated_gpus_json.map(|json| serde_json::from_str(&json).unwrap_or_default());
+            let required_gpus_int: i64 = row.get(6)?;
+            let envs_json: String = row.get(7)?;
             let envs: HashMap<String, String> =
                 serde_json::from_str(&envs_json).unwrap_or_default();
-            let log_path: String = row.get(7)?;
-            let cwd: String = row.get(8)?;
-            let remaining_dependencies: i64 = row.get(9)?;
-            let start_time: Option<i64> = row.get(10)?;
-            let end_time: Option<i64> = row.get(11)?;
+            let log_path: String = row.get(8)?;
+            let cwd: String = row.get(9)?;
+            let remaining_dependencies: i64 = row.get(10)?;
+            let start_time: Option<i64> = row.get(11)?;
+            let end_time: Option<i64> = row.get(12)?;
 
             // Construct and return Job struct
             Ok(Job {
@@ -530,6 +554,7 @@ impl DataBase {
                 username: row.get(2)?,
                 command,
                 allowed_gpus,
+                allocated_gpus,
                 required_gpus: required_gpus_int as usize,
                 envs,
                 log_path,
@@ -572,6 +597,7 @@ mod tests {
             username: "user".to_string(),
             command: vec!["true".to_string()],
             allowed_gpus: GpuSelection::All,
+            allocated_gpus: None,
             required_gpus: 1,
             envs: HashMap::new(),
             log_path: format!("/tmp/job-{}.log", id),
@@ -631,9 +657,9 @@ mod tests {
         insert(&db, &[], 1);
         insert(&db, &[], 2);
         insert(&db, &[1, 2], 3);
-        db.update_status(1, JobStatus::Running).unwrap();
+        db.update_status(1, JobStatus::Running, Some(&[0])).unwrap();
 
-        db.update_status(1, JobStatus::Completed).unwrap();
+        db.update_status(1, JobStatus::Completed, None).unwrap();
 
         let prerequisite = db.get_job_by_id(1).unwrap().unwrap();
         let dependent = db.get_job_by_id(3).unwrap().unwrap();
@@ -641,8 +667,8 @@ mod tests {
         assert_eq!(dependent.status, JobStatus::Blocked);
         assert_eq!(dependent.remaining_dependencies, 1);
 
-        db.update_status(2, JobStatus::Running).unwrap();
-        db.update_status(2, JobStatus::Completed).unwrap();
+        db.update_status(2, JobStatus::Running, Some(&[1])).unwrap();
+        db.update_status(2, JobStatus::Completed, None).unwrap();
         let dependent = db.get_job_by_id(3).unwrap().unwrap();
         assert_eq!(dependent.status, JobStatus::Pending);
         assert_eq!(dependent.remaining_dependencies, 0);
@@ -652,8 +678,8 @@ mod tests {
     fn completed_dependency_does_not_block_new_job() {
         let db = database();
         insert(&db, &[], 1);
-        db.update_status(1, JobStatus::Running).unwrap();
-        db.update_status(1, JobStatus::Completed).unwrap();
+        db.update_status(1, JobStatus::Running, Some(&[0])).unwrap();
+        db.update_status(1, JobStatus::Completed, None).unwrap();
 
         let dependent = insert(&db, &[1], 2);
         assert_eq!(dependent.status, JobStatus::Pending);
@@ -681,7 +707,7 @@ mod tests {
         insert(&db, &[1], 2);
         insert(&db, &[2], 3);
 
-        db.update_status(1, JobStatus::Failed).unwrap();
+        db.update_status(1, JobStatus::Failed, None).unwrap();
 
         assert_eq!(
             db.get_job_by_id(1).unwrap().unwrap().status,
@@ -704,7 +730,7 @@ mod tests {
         insert(&db, &[1], 2);
         insert(&db, &[2], 3);
 
-        db.update_status(1, JobStatus::Cancelled).unwrap();
+        db.update_status(1, JobStatus::Cancelled, None).unwrap();
 
         assert_eq!(
             db.get_job_by_id(1).unwrap().unwrap().status,
