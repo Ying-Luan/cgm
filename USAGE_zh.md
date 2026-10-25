@@ -65,7 +65,7 @@ cgm submit [OPTIONS] -- <COMMAND>
 | 参数名称 | 简写 | 默认值 | 说明 | 配置键 |
 | ------- | ---- | ----- | ---- | --- |
 | `--allow-gpus <ID,ID,...>` | `-G <ID,ID,...>` | ` ` | 限制任务可使用的 GPU ID，使用逗号分隔 | `submit.allow_gpus` |
-| `--depends-on <ID,ID,...>` | ` ` | ` ` | 指定必须成功完成的前置任务，使用逗号分隔 | ` ` |
+| `--depends-on <ID,ID,...>` | `-D` | ` ` | 指定必须成功完成的前置任务，使用逗号分隔 | ` ` |
 | `--detach` | `-d` | `false` | 开启分离模式。任务提交后立即返回，不阻塞终端 | `submit.detach` |
 | `--follow` | ` ` | `true` | 任务提交后打开 `less`，阻塞终端 | `submit.detach` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | 指定日志文件路径 | ` ` |
@@ -105,7 +105,7 @@ cgm rerun <JOB_ID> [OPTIONS]
 | ------- | ---- | ----- | ---- | --- |
 | `--allow-gpus <ID,ID,...>` | `-G <ID,ID,...>` | ` ` | 覆盖新任务允许使用的 GPU ID，使用逗号分隔 | ` ` |
 | `--current-env` | `-e` | `false` | 使用当前环境替换源任务保存的环境 | ` ` |
-| `--depends-on <ID,ID,...>` | ` ` | ` ` | 指定新任务的前置任务，使用逗号分隔 | ` ` |
+| `--depends-on <ID,ID,...>` | `-D` | ` ` | 指定新任务的前置任务，使用逗号分隔 | ` ` |
 | `--detach` | `-d` | `false` | 开启分离模式。提交后不打开日志查看器 | `rerun.detach` |
 | `--follow` | ` ` | `true` | 任务提交后打开 `less`，阻塞终端 | `rerun.detach` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | 指定新任务日志路径 | ` ` |

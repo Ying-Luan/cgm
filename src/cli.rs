@@ -97,6 +97,7 @@ enum Commands {
         allow_gpus: Option<String>,
         /// Comma-separated prerequisite job IDs
         #[arg(
+            short = 'D',
             long,
             value_name = "ID,ID,...",
             help = "Comma-separated prerequisite job IDs"
@@ -155,6 +156,7 @@ enum Commands {
         current_env: bool,
         /// Comma-separated prerequisite job IDs
         #[arg(
+            short = 'D',
             long,
             value_name = "ID,ID,...",
             help = "Comma-separated prerequisite job IDs"
