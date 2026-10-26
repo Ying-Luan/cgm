@@ -9,7 +9,7 @@ use rusqlite::Connection;
 
 use crate::{
     config::{load_global_effective, validate_effective},
-    constants::DB_PATH,
+    constants::{DB_PATH, JOB_LOG_FOLDER},
     daemon::{is_daemon_running, start_daemon},
     db::check_db_compatible,
     macros::{green, yellow},
@@ -54,6 +54,7 @@ pub(super) fn run(
             fs::remove_file(format!("{}-shm", DB_PATH)).ok();
             println!("{}", yellow!("Removed old database."));
         }
+        remove_job_logs(Path::new(JOB_LOG_FOLDER));
     } else if Path::new(DB_PATH).exists() {
         match Connection::open(DB_PATH) {
             Ok(conn) => {
@@ -102,6 +103,24 @@ pub(super) fn run(
     }
 }
 
+/// Remove persisted job logs when rebuilding the database.
+///
+/// # Arguments
+///
+/// * `log_dir` - Directory containing persisted job log files.
+fn remove_job_logs(log_dir: &Path) {
+    let Ok(entries) = fs::read_dir(log_dir) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            fs::remove_file(path).ok();
+        }
+    }
+}
+
 /// Merge CLI parameters and global configuration into effective start options.
 ///
 /// # Arguments
@@ -136,4 +155,30 @@ fn merge_config(
     validate_effective(&config)?;
 
     Ok(config.start)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, time::SystemTime};
+
+    use super::remove_job_logs;
+
+    #[test]
+    fn removes_job_logs_but_keeps_log_directory() {
+        let log_dir = std::env::temp_dir().join(format!(
+            "cgm-start-test-{}",
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&log_dir).unwrap();
+        fs::write(log_dir.join("job-1.log"), "old log").unwrap();
+
+        remove_job_logs(&log_dir);
+
+        assert!(!log_dir.join("job-1.log").exists());
+        assert!(log_dir.exists());
+        fs::remove_dir_all(log_dir).unwrap();
+    }
 }
