@@ -177,3 +177,67 @@ pub(crate) struct JobPrintInfo {
     /// Job end time (Unix timestamp), None if not ended
     pub(crate) end_time: Option<i64>,
 }
+
+/// Complete job details.
+#[derive(Serialize, Deserialize)]
+pub(crate) struct JobInfo {
+    /// Job ID.
+    pub(crate) id: usize,
+    /// Job status.
+    pub(crate) status: JobStatus,
+    /// Submitting user.
+    pub(crate) username: String,
+    /// Saved command arguments.
+    pub(crate) command: Vec<String>,
+    /// GPU selection this job may use.
+    pub(crate) allowed_gpus: GpuSelection,
+    /// Most recently allocated GPU IDs.
+    pub(crate) allocated_gpus: Option<Vec<usize>>,
+    /// Number of GPUs requested.
+    pub(crate) required_gpus: usize,
+    /// Saved environment variables.
+    pub(crate) envs: HashMap<String, String>,
+    /// Log file path.
+    pub(crate) log_path: String,
+    /// Saved working directory.
+    pub(crate) cwd: String,
+    /// Number of unfinished prerequisites.
+    pub(crate) remaining_dependencies: usize,
+    /// Start time as Unix seconds, if started.
+    pub(crate) start_time: Option<i64>,
+    /// End time as Unix seconds, if ended.
+    pub(crate) end_time: Option<i64>,
+    /// Prerequisite job IDs.
+    pub(crate) dependencies: Vec<usize>,
+}
+
+impl JobInfo {
+    /// Combine a persisted job with its prerequisite IDs.
+    ///
+    /// # Arguments
+    ///
+    /// * `job` - Persisted job to consume.
+    /// * `dependencies` - Prerequisite IDs in ascending order.
+    ///
+    /// # Returns
+    ///
+    /// Complete details for a single job.
+    pub(crate) fn from_job(job: Job, dependencies: Vec<usize>) -> Self {
+        Self {
+            id: job.id,
+            status: job.status,
+            username: job.username,
+            command: job.command,
+            allowed_gpus: job.allowed_gpus,
+            allocated_gpus: job.allocated_gpus,
+            required_gpus: job.required_gpus,
+            envs: job.envs,
+            log_path: job.log_path,
+            cwd: job.cwd,
+            remaining_dependencies: job.remaining_dependencies,
+            start_time: job.start_time,
+            end_time: job.end_time,
+            dependencies,
+        }
+    }
+}

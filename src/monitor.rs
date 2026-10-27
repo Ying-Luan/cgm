@@ -1,6 +1,6 @@
 //! Status monitor module
 //!
-//! Provides show_status() function to display daemon status, GPU info and job list.
+//! Query and display daemon/GPU status; render supplied job lists and details.
 
 use comfy_table::{Cell, Table, presets::NOTHING};
 use time::{OffsetDateTime, UtcOffset, macros::format_description};
@@ -10,6 +10,7 @@ use crate::{
     daemon::is_daemon_running,
     hardware::get_gpu_info,
     macros::{green, yellow},
+    types::{JobInfo, JobPrintInfo},
 };
 
 /// Maximum command length shown in the compact job list.
@@ -157,112 +158,174 @@ pub(crate) fn show_status() {
     }
 }
 
-/// Display job list
+/// Display all persisted job fields in database column order, then dependencies.
+///
+/// Environment variables are sorted by name and control characters are escaped.
 ///
 /// # Arguments
 ///
-/// * `limit` - Limit number of jobs returned, None for all
-/// * `long_format` - Show detailed field names and full commands
-pub(crate) fn show_list(limit: Option<usize>, long_format: bool) {
-    match client::list_jobs(limit) {
-        Ok((jobs, total)) => {
-            println!("--- Jobs ({}/{}) ---", jobs.len(), total);
-            if jobs.is_empty() {
-                println!("{}", yellow!("(no jobs)"));
-                return;
-            }
-
-            let mut table = Table::new();
-            let headers = if long_format {
-                vec![
-                    "ID",
-                    "Status",
-                    "User",
-                    "Required GPUs",
-                    "Allowed GPUs",
-                    "Allocated GPUs",
-                    "Depends On",
-                    "Remaining",
-                    "Start",
-                    "Duration",
-                    "Command",
-                ]
-            } else {
-                vec![
-                    "ID",
-                    "Status",
-                    "User",
-                    "Req GPU",
-                    "Allow GPU",
-                    "Alloc GPU",
-                    "Deps",
-                    "Remain",
-                    "Start",
-                    "Duration",
-                    "Cmd",
-                ]
-            };
-            table.load_preset(NOTHING).set_header(headers);
-
-            for job in jobs {
-                let allowed_gpus = job.allowed_gpus.to_string();
-                let allocated_gpus = job
-                    .allocated_gpus
-                    .as_ref()
-                    .map(|gpus| {
-                        gpus.iter()
-                            .map(usize::to_string)
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    })
-                    .unwrap_or_else(|| "-".to_string());
-                let dependencies = if job.dependencies.is_empty() {
-                    "-".to_string()
-                } else {
-                    job.dependencies
-                        .iter()
-                        .map(usize::to_string)
-                        .collect::<Vec<_>>()
-                        .join(",")
-                };
-                let remaining = if job.dependencies.is_empty() {
-                    "-".to_string()
-                } else {
-                    format!("{}/{}", job.remaining_dependencies, job.dependencies.len())
-                };
-                let start_str = job
-                    .start_time
-                    .map(format_timestamp)
-                    .unwrap_or_else(|| "-".to_string());
-                let duration_str = calculate_duration(job.start_time, job.end_time);
-                let command = job.command.join(" ");
-                let command = if long_format {
-                    command
-                } else {
-                    truncate_command(command)
-                };
-                table.add_row(vec![
-                    Cell::new(job.id.to_string()),
-                    Cell::new(job.status.as_str()).fg(job.status.color()),
-                    Cell::new(job.username),
-                    Cell::new(job.required_gpus.to_string()),
-                    Cell::new(allowed_gpus),
-                    Cell::new(allocated_gpus),
-                    Cell::new(dependencies),
-                    Cell::new(remaining),
-                    Cell::new(start_str),
-                    Cell::new(duration_str),
-                    Cell::new(command),
-                ]);
-            }
-
-            println!("{table}");
+/// * `job` - Complete job details to display.
+pub(crate) fn show_job_info(job: &JobInfo) {
+    let ids = |values: &[usize]| {
+        if values.is_empty() {
+            "-".to_string()
+        } else {
+            values
+                .iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
         }
-        Err(e) => {
-            println!("--- Jobs ---");
-            println!("{}", yellow!("(failed to query: {})", e));
+    };
+    println!("--- Job Info ---");
+    println!("{:<24}{}", "ID:", job.id);
+    println!("{:<24}{}", "Status:", job.status.as_str());
+    println!("{:<24}{}", "Username:", job.username);
+    println!("{:<24}{}", "Command:", job.command.join(" "));
+    println!("{:<24}{}", "Allowed GPUs:", job.allowed_gpus);
+    println!(
+        "{:<24}{}",
+        "Allocated GPUs:",
+        job.allocated_gpus
+            .as_deref()
+            .map(ids)
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!("{:<24}{}", "Required GPUs:", job.required_gpus);
+    if job.envs.is_empty() {
+        println!("{:<24}(empty)", "Environment:");
+    } else {
+        println!("Environment:");
+        let mut envs = job.envs.iter().collect::<Vec<_>>();
+        envs.sort_by(|(left, _), (right, _)| left.cmp(right));
+        for (key, value) in envs {
+            println!("  {}={}", key.escape_debug(), value.escape_debug());
         }
     }
+    println!("{:<24}{}", "Log Path:", job.log_path);
+    println!("{:<24}{}", "Working Directory:", job.cwd);
+    println!(
+        "{:<24}{}",
+        "Remaining Dependencies:", job.remaining_dependencies
+    );
+    println!(
+        "{:<24}{}",
+        "Start Time:",
+        job.start_time
+            .map(format_timestamp)
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!(
+        "{:<24}{}",
+        "End Time:",
+        job.end_time
+            .map(format_timestamp)
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!("{:<24}{}", "Dependencies:", ids(&job.dependencies));
+}
+
+/// Display supplied jobs without querying the daemon.
+///
+/// Empty lists display a message instead of a table.
+///
+/// # Arguments
+///
+/// * `jobs` - Jobs to display in the supplied order
+/// * `total` - Total job count reported by the daemon
+/// * `long_format` - Show detailed field names and full commands
+pub(crate) fn show_list(jobs: &[JobPrintInfo], total: usize, long_format: bool) {
+    println!("--- Jobs ({}/{}) ---", jobs.len(), total);
+    if jobs.is_empty() {
+        println!("{}", yellow!("(no jobs)"));
+        return;
+    }
+
+    let mut table = Table::new();
+    let headers = if long_format {
+        vec![
+            "ID",
+            "Status",
+            "User",
+            "Required GPUs",
+            "Allowed GPUs",
+            "Allocated GPUs",
+            "Depends On",
+            "Remaining",
+            "Start",
+            "Duration",
+            "Command",
+        ]
+    } else {
+        vec![
+            "ID",
+            "Status",
+            "User",
+            "Req GPU",
+            "Allow GPU",
+            "Alloc GPU",
+            "Deps",
+            "Remain",
+            "Start",
+            "Duration",
+            "Cmd",
+        ]
+    };
+    table.load_preset(NOTHING).set_header(headers);
+
+    for job in jobs {
+        let allowed_gpus = job.allowed_gpus.to_string();
+        let allocated_gpus = job
+            .allocated_gpus
+            .as_ref()
+            .map(|gpus| {
+                gpus.iter()
+                    .map(usize::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .unwrap_or_else(|| "-".to_string());
+        let dependencies = if job.dependencies.is_empty() {
+            "-".to_string()
+        } else {
+            job.dependencies
+                .iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        let remaining = if job.dependencies.is_empty() {
+            "-".to_string()
+        } else {
+            format!("{}/{}", job.remaining_dependencies, job.dependencies.len())
+        };
+        let start_str = job
+            .start_time
+            .map(format_timestamp)
+            .unwrap_or_else(|| "-".to_string());
+        let duration_str = calculate_duration(job.start_time, job.end_time);
+        let command = job.command.join(" ");
+        let command = if long_format {
+            command
+        } else {
+            truncate_command(command)
+        };
+        table.add_row(vec![
+            Cell::new(job.id.to_string()),
+            Cell::new(job.status.as_str()).fg(job.status.color()),
+            Cell::new(&job.username),
+            Cell::new(job.required_gpus.to_string()),
+            Cell::new(allowed_gpus),
+            Cell::new(allocated_gpus),
+            Cell::new(dependencies),
+            Cell::new(remaining),
+            Cell::new(start_str),
+            Cell::new(duration_str),
+            Cell::new(command),
+        ]);
+    }
+
+    println!("{table}");
 }
 
 #[cfg(test)]

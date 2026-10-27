@@ -5,6 +5,7 @@
 mod cancel;
 mod config;
 mod delete;
+mod info;
 mod list;
 mod log;
 mod rerun;
@@ -241,6 +242,12 @@ enum Commands {
         #[arg(short, long, help = "Show detailed field names and full commands")]
         long_format: bool,
     },
+    /// View complete job information
+    Info {
+        /// Job ID
+        #[arg(help = "Job ID")]
+        id: usize,
+    },
     /// View job log
     Log {
         /// Job ID
@@ -312,6 +319,7 @@ pub(crate) fn run() {
             limit,
             long_format,
         } => list::run(all, limit, long_format),
+        Commands::Info { id } => info::run(id),
         Commands::Log { id } => log::run(id),
         Commands::Config { command } => config::run(command),
     }
@@ -343,6 +351,12 @@ mod tests {
     #[test]
     fn rerun_rejects_duplicate_current_fields() {
         assert!(Cli::try_parse_from(["cgm", "rerun", "1", "-c", "env,e"]).is_err());
+    }
+
+    #[test]
+    fn info_parses_job_id() {
+        let cli = Cli::try_parse_from(["cgm", "info", "42"]).unwrap();
+        assert!(matches!(cli.command, Commands::Info { id: 42 }));
     }
 
     #[test]

@@ -8,8 +8,8 @@ use crate::{
     constants::SOCKET_PATH,
     os::get_current_username,
     types::{
-        DeleteTarget, GpuInfo, GpuSelection, JobPrintInfo, JobRequest, Request, RerunContext,
-        Response,
+        DeleteTarget, GpuInfo, GpuSelection, JobInfo, JobPrintInfo, JobRequest, Request,
+        RerunContext, Response,
     },
 };
 
@@ -178,6 +178,26 @@ pub(crate) fn list_jobs(limit: Option<usize>) -> Result<(Vec<JobPrintInfo>, usiz
         limit,
     })? {
         Response::List { jobs, total } => Ok((jobs, total)),
+        Response::Error { message } => Err(message),
+        _ => Err("Unexpected response".to_string()),
+    }
+}
+
+/// Query complete job details with the current user's permissions.
+///
+/// # Arguments
+///
+/// * `id` - Job ID to query.
+///
+/// # Returns
+///
+/// The saved job details, including environment variables and directory.
+pub(crate) fn get_job_info(id: usize) -> Result<JobInfo, String> {
+    match send_request(&Request::Info {
+        id,
+        username: get_current_username(),
+    })? {
+        Response::Info { job } => Ok(*job),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
     }

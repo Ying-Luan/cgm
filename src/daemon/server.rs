@@ -21,7 +21,7 @@ use crate::{
     hardware::GpuPool,
     macros::{green, red},
     types::{
-        DeleteTarget, GpuSelection, Job, JobPrintInfo, JobRequest, JobStatus, Request,
+        DeleteTarget, GpuSelection, Job, JobInfo, JobPrintInfo, JobRequest, JobStatus, Request,
         RerunContext, Response,
     },
 };
@@ -147,6 +147,7 @@ impl Server {
             Request::Delete { target } => self.handle_delete(target),
             Request::Status => self.handle_status(),
             Request::List { username, limit } => self.handle_list(&username, limit),
+            Request::Info { id, username } => self.handle_info(id, &username),
             Request::Log { id, username } => self.handle_log(id, &username),
         }
     }
@@ -584,6 +585,40 @@ impl Server {
         Response::List {
             jobs: job_infos,
             total,
+        }
+    }
+
+    /// Query complete job details after checking ownership.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Job ID to query.
+    /// * `username` - Requesting user; root may query any job.
+    ///
+    /// # Returns
+    ///
+    /// Complete details, or an error for lookup, permission, or database failure.
+    fn handle_info(&self, id: usize, username: &str) -> Response {
+        let job = match self.get_job_with_permission(id, username) {
+            Ok(job) => job,
+            Err(message) => return Response::Error { message },
+        };
+
+        match self
+            .queue
+            .lock()
+            .unwrap()
+            .get_dependencies_by_job_ids(&[id])
+        {
+            Ok(mut dependencies) => Response::Info {
+                job: Box::new(JobInfo::from_job(
+                    job,
+                    dependencies.remove(&id).unwrap_or_default(),
+                )),
+            },
+            Err(error) => Response::Error {
+                message: format!("Database error: {error}"),
+            },
         }
     }
 

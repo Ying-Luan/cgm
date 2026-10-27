@@ -1,8 +1,9 @@
 //! List jobs subcommand
 //!
-//! Call monitor module to display job list.
+//! Query jobs via daemon, then display the list through the monitor module.
 
 use crate::{
+    client::list_jobs,
     config::{load_effective, validate_effective},
     monitor::show_list,
     types::EffectiveListConfig,
@@ -10,7 +11,7 @@ use crate::{
 
 use super::utils::{exit_with_error, require_daemon};
 
-/// List jobs
+/// Query and display jobs, exiting with an error if the query fails.
 ///
 /// # Arguments
 ///
@@ -23,7 +24,10 @@ pub(super) fn run(all: bool, limit: Option<usize>, long_format: bool) {
     let config = merge_config(limit).unwrap_or_else(|error| exit_with_error(&error));
 
     let limit_param = if all { None } else { Some(config.limit.value) };
-    show_list(limit_param, long_format);
+    match list_jobs(limit_param) {
+        Ok((jobs, total)) => show_list(&jobs, total, long_format),
+        Err(error) => exit_with_error(&error),
+    }
 }
 
 /// Merge CLI parameters and persistent configuration into effective list configuration.

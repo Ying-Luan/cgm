@@ -19,6 +19,7 @@
 * [Delete Job](#delete-job)
 * [View Status](#view-status)
 * [View Job List](#view-job-list)
+* [View Job Info](#view-job-info)
 * [View Job Log](#view-job-log)
 * [Configuration](#configuration)
   * [Initialize Configuration](#initialize-configuration)
@@ -158,6 +159,15 @@ cgm list [OPTIONS]
 | `--long-format` | `-l` | `false` | Show detailed field names and full commands | ` ` |
 
 `--all` and `--limit` are mutually exclusive. Only one can be specified.
+
+## View Job Info
+
+```bash
+cgm info <JOB_ID>
+```
+
+| Option | Short | Default | Description | Config Key |
+| ------ | ----- | ------- | ----------- | --- |
 
 ## View Job Log
 

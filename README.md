@@ -39,6 +39,7 @@ cgm/
 │   │   ├── cancel.rs        # cgm cancel
 │   │   ├── config.rs        # cgm config
 │   │   ├── delete.rs        # cgm delete
+│   │   ├── info.rs          # cgm info
 │   │   ├── list.rs          # cgm list
 │   │   ├── log.rs           # cgm log
 │   │   ├── rerun.rs         # cgm rerun
@@ -85,6 +86,7 @@ cgm/
 ├── .gitignore
 ├── Cargo.lock
 ├── Cargo.toml
+├── cliff.toml
 ├── dist-workspace.toml
 ├── install.sh
 ├── LICENSE

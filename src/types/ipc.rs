@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     gpu::{GpuInfo, GpuSelection},
-    job::{JobPrintInfo, JobRequest, JobStatus},
+    job::{JobInfo, JobPrintInfo, JobRequest, JobStatus},
 };
 
 /// Current terminal values optionally replacing a source job's saved context.
@@ -81,6 +81,13 @@ pub(crate) enum Request {
         /// Limit number of jobs returned
         limit: Option<usize>,
     },
+    /// Get complete job details after checking ownership.
+    Info {
+        /// Job ID.
+        id: usize,
+        /// Requesting username.
+        username: String,
+    },
     /// Get job log path request
     Log {
         /// Job ID
@@ -130,6 +137,11 @@ pub(crate) enum Response {
         jobs: Vec<JobPrintInfo>,
         /// Total job count
         total: usize,
+    },
+    /// Complete job details response.
+    Info {
+        /// Persisted job details and prerequisite IDs.
+        job: Box<JobInfo>,
     },
     /// Log path response
     Log {
