@@ -104,7 +104,7 @@ cgm rerun <JOB_ID> [OPTIONS]
 | Option | Short | Default | Description | Config Key |
 | ------ | ----- | ------- | ----------- | --- |
 | `--allow-gpus <ID,ID,...>` | `-G <ID,ID,...>` | ` ` | Override GPU IDs this job may use, comma-separated | ` ` |
-| `--current-env` | `-e` | `false` | Replace the saved environment with the current environment | ` ` |
+| `--current <FIELDS>` | `-c <FIELDS>` | ` ` | Use current environment variables (`env`/`e`) and/or working directory (`dir`/`d`), comma-separated | ` ` |
 | `--depends-on <ID,ID,...>` | `-D` | ` ` | Specify prerequisite jobs for the new job, comma-separated | ` ` |
 | `--detach` | `-d` | `false` | Enable detach mode. Do not open the log viewer after submission | `rerun.detach` |
 | `--follow` | ` ` | `true` | Open `less` to follow the new job log, blocks the terminal | `rerun.detach` |

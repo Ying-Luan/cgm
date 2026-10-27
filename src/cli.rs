@@ -146,14 +146,14 @@ enum Commands {
             help = "Comma-separated GPU IDs this job may use"
         )]
         allow_gpus: Option<String>,
-        /// Use current environment instead of saved environment
+        /// Use current values for selected fields
         #[arg(
-            short = 'e',
+            short,
             long,
-            default_value = "false",
-            help = "Use current environment instead of saved environment"
+            value_name = "FIELDS",
+            help = "Use current values for selected fields: env (e), dir (d); comma-separated"
         )]
-        current_env: bool,
+        current: Option<rerun::CurrentFields>,
         /// Comma-separated prerequisite job IDs
         #[arg(
             short = 'D',
@@ -288,7 +288,7 @@ pub(crate) fn run() {
         Commands::Rerun {
             id,
             allow_gpus,
-            current_env,
+            current,
             depends_on,
             detach,
             follow,
@@ -297,7 +297,7 @@ pub(crate) fn run() {
         } => rerun::run(
             id,
             allow_gpus,
-            current_env,
+            current,
             depends_on,
             detach,
             follow,
@@ -322,6 +322,28 @@ mod tests {
     use clap::Parser;
 
     use super::{Cli, Commands};
+
+    #[test]
+    fn rerun_parses_current_fields() {
+        let cli = Cli::try_parse_from(["cgm", "rerun", "1"]).unwrap();
+        assert!(matches!(cli.command, Commands::Rerun { current: None, .. }));
+
+        let cli = Cli::try_parse_from(["cgm", "rerun", "1", "-c", "e,d"]).unwrap();
+        let Commands::Rerun { current, .. } = cli.command else {
+            panic!("expected rerun command");
+        };
+        assert_eq!(current, Some("env,dir".parse().unwrap()));
+    }
+
+    #[test]
+    fn rerun_rejects_current_without_value() {
+        assert!(Cli::try_parse_from(["cgm", "rerun", "1", "--current"]).is_err());
+    }
+
+    #[test]
+    fn rerun_rejects_duplicate_current_fields() {
+        assert!(Cli::try_parse_from(["cgm", "rerun", "1", "-c", "env,e"]).is_err());
+    }
 
     #[test]
     fn configurable_arguments_preserve_explicit_values() {

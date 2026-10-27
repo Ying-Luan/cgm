@@ -2,16 +2,54 @@
 //!
 //! Create a new job from an existing job's saved configuration.
 
+use std::str::FromStr;
+
 use crate::{
     client::rerun_job,
     config::{load_effective, validate_effective},
     macros::green,
     os::open_log_with_less,
-    types::{EffectiveRerunConfig, GpuSelection},
+    types::{EffectiveRerunConfig, GpuSelection, RerunContext},
     utils::parse_comma_separated_ids,
 };
 
 use super::utils::{exit_with_error, require_daemon};
+
+/// Fields to replace with values from the current terminal.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct CurrentFields {
+    /// Whether to use the current working directory.
+    dir: bool,
+    /// Whether to use the current environment variables.
+    env: bool,
+}
+
+impl FromStr for CurrentFields {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let mut fields = Self {
+            dir: false,
+            env: false,
+        };
+        for field in value.split(',') {
+            let (selected, name) = match field {
+                "dir" | "d" => (&mut fields.dir, "dir"),
+                "env" | "e" => (&mut fields.env, "env"),
+                _ => {
+                    return Err(format!(
+                        "Invalid current field '{field}'; expected env (e) or dir (d)"
+                    ));
+                }
+            };
+            if *selected {
+                return Err(format!("Duplicate current field '{name}'"));
+            }
+            *selected = true;
+        }
+        Ok(fields)
+    }
+}
 
 /// Rerun an existing job as a new job
 ///
@@ -19,7 +57,7 @@ use super::utils::{exit_with_error, require_daemon};
 ///
 /// * `id` - Source job ID
 /// * `allow_gpus` - Optional comma-separated GPU IDs this job may use
-/// * `current_env` - Use the current environment instead of the saved environment
+/// * `current` - Fields to replace with values from the current terminal
 /// * `depends_on` - Optional comma-separated prerequisite job IDs
 /// * `detach` - Detach flag, returns immediately after submission
 /// * `follow` - Follow flag, opens less to follow the new job log
@@ -28,7 +66,7 @@ use super::utils::{exit_with_error, require_daemon};
 pub(super) fn run(
     id: usize,
     allow_gpus: Option<String>,
-    current_env: bool,
+    current: Option<CurrentFields>,
     depends_on: Option<String>,
     detach: bool,
     follow: bool,
@@ -48,8 +86,22 @@ pub(super) fn run(
     let dependencies = parse_comma_separated_ids(depends_on.as_deref())
         .unwrap_or_else(|error| exit_with_error(&error));
 
-    let envs = current_env.then(|| std::env::vars().collect());
-    match rerun_job(id, envs, allowed_gpus, dependencies, require_gpus, log) {
+    let context = RerunContext {
+        cwd: if current.as_ref().is_some_and(|fields| fields.dir) {
+            Some(
+                std::env::current_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+            )
+        } else {
+            None
+        },
+        envs: current
+            .as_ref()
+            .is_some_and(|fields| fields.env)
+            .then(|| std::env::vars().collect()),
+    };
+    match rerun_job(id, context, allowed_gpus, dependencies, require_gpus, log) {
         Ok((id, log_path)) => {
             println!(
                 "{}",

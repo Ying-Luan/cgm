@@ -104,7 +104,7 @@ cgm rerun <JOB_ID> [OPTIONS]
 | 参数名称 | 简写 | 默认值 | 说明 | 配置键 |
 | ------- | ---- | ----- | ---- | --- |
 | `--allow-gpus <ID,ID,...>` | `-G <ID,ID,...>` | ` ` | 覆盖新任务允许使用的 GPU ID，使用逗号分隔 | ` ` |
-| `--current-env` | `-e` | `false` | 使用当前环境替换源任务保存的环境 | ` ` |
+| `--current <FIELDS>` | `-c <FIELDS>` | ` ` | 使用当前环境变量（`env`/`e`）和/或工作目录（`dir`/`d`），使用逗号分隔 | ` ` |
 | `--depends-on <ID,ID,...>` | `-D` | ` ` | 指定新任务的前置任务，使用逗号分隔 | ` ` |
 | `--detach` | `-d` | `false` | 开启分离模式。提交后不打开日志查看器 | `rerun.detach` |
 | `--follow` | ` ` | `true` | 任务提交后打开 `less`，阻塞终端 | `rerun.detach` |

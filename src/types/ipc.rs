@@ -11,6 +11,15 @@ use super::{
     job::{JobPrintInfo, JobRequest, JobStatus},
 };
 
+/// Current terminal values optionally replacing a source job's saved context.
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct RerunContext {
+    /// Working directory override; None preserves the saved directory.
+    pub(crate) cwd: Option<String>,
+    /// Environment override; None preserves the saved environment variables.
+    pub(crate) envs: Option<HashMap<String, String>>,
+}
+
 /// Delete target enum
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) enum DeleteTarget {
@@ -36,8 +45,8 @@ pub(crate) enum Request {
     Rerun {
         /// Source job ID
         id: usize,
-        /// Optional current environment snapshot
-        envs: Option<HashMap<String, String>>,
+        /// Optional current terminal values overriding the saved context
+        context: RerunContext,
         /// Optional allowed GPU selection override
         allowed_gpus: Option<GpuSelection>,
         /// Optional dependency override

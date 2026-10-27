@@ -145,7 +145,7 @@ sudo chmod +x /usr/local/bin/cgm
 sudo cgm start                           # 启动守护进程
 cgm config set submit.detach true        # 设置持久默认值
 cgm submit -g 1 -- python main.py        # 提交任务
-cgm rerun 1 -e                           # 使用当前环境重新运行任务
+cgm rerun 1 -c e,d                       # 使用当前环境变量和工作目录重新运行任务
 cgm list                                 # 列出任务
 cgm log 1                                # 查看日志
 cgm cancel 1                             # 取消任务

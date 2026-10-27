@@ -2,12 +2,15 @@
 //!
 //! Communicate with daemon via Unix Domain Socket, submit jobs and query GPU status.
 
-use std::{collections::HashMap, io::Write, os::unix::net::UnixStream};
+use std::{io::Write, os::unix::net::UnixStream};
 
 use crate::{
     constants::SOCKET_PATH,
     os::get_current_username,
-    types::{DeleteTarget, GpuInfo, GpuSelection, JobPrintInfo, JobRequest, Request, Response},
+    types::{
+        DeleteTarget, GpuInfo, GpuSelection, JobPrintInfo, JobRequest, Request, RerunContext,
+        Response,
+    },
 };
 
 /// Send request to daemon and receive response
@@ -71,7 +74,7 @@ pub(crate) fn submit_job(request: JobRequest) -> Result<(usize, String), String>
 /// # Arguments
 ///
 /// * `id` - Source job ID
-/// * `envs` - Optional current environment snapshot
+/// * `context` - Current terminal values overriding the saved context
 /// * `allowed_gpus` - Optional allowed GPU ID override
 /// * `dependencies` - Optional dependency override
 /// * `required_gpus` - Optional required GPU count override
@@ -83,7 +86,7 @@ pub(crate) fn submit_job(request: JobRequest) -> Result<(usize, String), String>
 /// * `String` - Error message on failure
 pub(crate) fn rerun_job(
     id: usize,
-    envs: Option<HashMap<String, String>>,
+    context: RerunContext,
     allowed_gpus: Option<GpuSelection>,
     dependencies: Option<Vec<usize>>,
     required_gpus: Option<usize>,
@@ -91,7 +94,7 @@ pub(crate) fn rerun_job(
 ) -> Result<(usize, String), String> {
     match send_request(&Request::Rerun {
         id,
-        envs,
+        context,
         allowed_gpus,
         dependencies,
         required_gpus,

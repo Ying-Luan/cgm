@@ -13,6 +13,6 @@ pub(crate) use config::{
     EffectiveStartConfig, EffectiveSubmitConfig, Source,
 };
 pub(crate) use gpu::{GpuInfo, GpuPrintInfo, GpuSelection, GpuState};
-pub(crate) use ipc::{DeleteTarget, Request, Response};
+pub(crate) use ipc::{DeleteTarget, Request, RerunContext, Response};
 pub(crate) use job::{Job, JobPrintInfo, JobRequest, JobStatus};
 pub(crate) use scheduler::SchedulerKind;

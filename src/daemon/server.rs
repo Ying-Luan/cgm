@@ -3,7 +3,6 @@
 //! Listen on Unix Domain Socket, receive and handle client requests.
 
 use std::{
-    collections::HashMap,
     fs::{self, File},
     io::Read,
     os::unix::{
@@ -22,7 +21,8 @@ use crate::{
     hardware::GpuPool,
     macros::{green, red},
     types::{
-        DeleteTarget, GpuSelection, Job, JobPrintInfo, JobRequest, JobStatus, Request, Response,
+        DeleteTarget, GpuSelection, Job, JobPrintInfo, JobRequest, JobStatus, Request,
+        RerunContext, Response,
     },
 };
 
@@ -124,7 +124,7 @@ impl Server {
             Request::Submit { job } => self.handle_submit(job),
             Request::Rerun {
                 id,
-                envs,
+                context,
                 allowed_gpus,
                 dependencies,
                 required_gpus,
@@ -132,7 +132,7 @@ impl Server {
                 username,
             } => self.handle_rerun(
                 id,
-                envs,
+                context,
                 allowed_gpus,
                 dependencies,
                 required_gpus,
@@ -194,7 +194,7 @@ impl Server {
     /// # Arguments
     ///
     /// * `id` - Source job ID
-    /// * `envs` - Optional current environment snapshot
+    /// * `context` - Current terminal values overriding the saved context
     /// * `allowed_gpus` - Optional allowed GPU ID override
     /// * `dependencies` - Optional dependency override
     /// * `required_gpus` - Optional GPU count override
@@ -207,7 +207,7 @@ impl Server {
     fn handle_rerun(
         &self,
         id: usize,
-        envs: Option<HashMap<String, String>>,
+        context: RerunContext,
         allowed_gpus: Option<GpuSelection>,
         dependencies: Option<Vec<usize>>,
         required_gpus: Option<usize>,
@@ -219,7 +219,7 @@ impl Server {
             Err(message) => return Response::Error { message },
         };
 
-        if envs.is_some() && username == "root" && job.username != "root" {
+        if context.envs.is_some() && username == "root" && job.username != "root" {
             return Response::Error {
                 message: "Cannot use root's current environment for another user's job".to_string(),
             };
@@ -231,9 +231,9 @@ impl Server {
             command: job.command,
             dependencies: dependencies.unwrap_or_default(),
             required_gpus: required_gpus.unwrap_or(job.required_gpus),
-            envs: envs.unwrap_or(job.envs),
+            envs: context.envs.unwrap_or(job.envs),
             log_path,
-            cwd: job.cwd,
+            cwd: context.cwd.unwrap_or(job.cwd),
         };
 
         match self.create_job(request) {

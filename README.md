@@ -145,7 +145,7 @@ Quick Reference for Common Commands:
 sudo cgm start                           # Start daemon
 cgm config set submit.detach true        # Set a persistent default
 cgm submit -g 1 -- python main.py        # Submit job
-cgm rerun 1 -e                           # Rerun job with current environment
+cgm rerun 1 -c e,d                       # Rerun with current environment and directory
 cgm list                                 # List jobs
 cgm log 1                                # View log
 cgm cancel 1                             # Cancel job
