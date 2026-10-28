@@ -1,11 +1,12 @@
 //! Submit job subcommand
 //!
-//! Build JobRequest and send to daemon via socket.
+//! Submit a job via daemon, display its saved details.
 
 use crate::{
     client::submit_job,
     config::{load_effective, validate_effective},
     macros::green,
+    monitor::show_job_info,
     os::{get_current_username, open_log_with_less},
     types::{EffectiveSubmitConfig, GpuSelection, JobRequest},
     utils::parse_comma_separated_ids,
@@ -64,13 +65,11 @@ pub(super) fn run(
     };
 
     match submit_job(request) {
-        Ok((id, log_path)) => {
-            println!(
-                "{}",
-                green!("Job submitted successfully. ID: {}, Log: {}", id, log_path)
-            );
+        Ok(job) => {
+            println!("{}", green!("Job submitted successfully."));
+            show_job_info(&job, false);
             if !config.detach.value
-                && let Err(e) = open_log_with_less(&log_path, 200, true)
+                && let Err(e) = open_log_with_less(&job.log_path, 200, true)
             {
                 exit_with_error(&format!("Failed to open log viewer: {}", e));
             }

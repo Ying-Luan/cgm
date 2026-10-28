@@ -107,17 +107,13 @@ pub(crate) enum Response {
     },
     /// Submit job success response
     Submit {
-        /// Job ID
-        id: usize,
-        /// Log file path
-        log_path: String,
+        /// Persisted details of the newly submitted job.
+        job: Box<JobInfo>,
     },
     /// Rerun job success response
     Rerun {
-        /// New job ID
-        id: usize,
-        /// New job log path
-        log_path: String,
+        /// Persisted details of the new job, not the source job.
+        job: Box<JobInfo>,
     },
     /// Cancel job response
     Cancel,

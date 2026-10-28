@@ -172,7 +172,7 @@ impl Server {
 
     /// Handle job submission request
     ///
-    /// Assigns new job ID, inserts into database, returns job ID and log path.
+    /// Assigns a new job ID and returns the persisted details.
     ///
     /// # Arguments
     ///
@@ -180,10 +180,10 @@ impl Server {
     ///
     /// # Returns
     ///
-    /// Response containing assigned job ID and log file path, or error message on failure.
+    /// Response containing the new job details, or an error message on failure.
     fn handle_submit(&self, req: JobRequest) -> Response {
         match self.create_job(req) {
-            Ok((id, log_path)) => Response::Submit { id, log_path },
+            Ok(job) => Response::Submit { job: Box::new(job) },
             Err(message) => Response::Error { message },
         }
     }
@@ -204,7 +204,7 @@ impl Server {
     ///
     /// # Returns
     ///
-    /// Response containing the new job ID and log path, or an error message.
+    /// Response containing the new job details, or an error message.
     fn handle_rerun(
         &self,
         id: usize,
@@ -238,7 +238,7 @@ impl Server {
         };
 
         match self.create_job(request) {
-            Ok((id, log_path)) => Response::Rerun { id, log_path },
+            Ok(job) => Response::Rerun { job: Box::new(job) },
             Err(message) => Response::Error { message },
         }
     }
@@ -251,8 +251,8 @@ impl Server {
     ///
     /// # Returns
     ///
-    /// New job ID and log path on success, or an error message on failure.
-    fn create_job(&self, req: JobRequest) -> Result<(usize, String), String> {
+    /// Persisted job details, or an error message on failure.
+    fn create_job(&self, req: JobRequest) -> Result<JobInfo, String> {
         let q = self.queue.lock().unwrap();
         let dependencies = req.dependencies.clone();
         let mut job = Job::from_request(q.get_max_id().unwrap_or(0) + 1, req);
@@ -270,7 +270,13 @@ impl Server {
             return Err(message);
         }
 
-        Ok((job.id, job.log_path))
+        drop(q);
+        self.get_job_info(job.id, &job.username).map_err(|error| {
+            format!(
+                "Job {} was created, but reading its saved details failed: {}",
+                job.id, error
+            )
+        })
     }
 
     /// Prepare log file for a new job
@@ -599,27 +605,34 @@ impl Server {
     ///
     /// Complete details, or an error for lookup, permission, or database failure.
     fn handle_info(&self, id: usize, username: &str) -> Response {
-        let job = match self.get_job_with_permission(id, username) {
-            Ok(job) => job,
-            Err(message) => return Response::Error { message },
-        };
+        match self.get_job_info(id, username) {
+            Ok(job) => Response::Info { job: Box::new(job) },
+            Err(message) => Response::Error { message },
+        }
+    }
 
-        match self
+    /// Read saved job details and dependencies after checking ownership.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Job ID to query.
+    /// * `username` - Requesting user; root may query any job.
+    ///
+    /// # Returns
+    ///
+    /// Saved job details with prerequisite IDs in ascending order.
+    fn get_job_info(&self, id: usize, username: &str) -> Result<JobInfo, String> {
+        let job = self.get_job_with_permission(id, username)?;
+        let mut dependencies = self
             .queue
             .lock()
             .unwrap()
             .get_dependencies_by_job_ids(&[id])
-        {
-            Ok(mut dependencies) => Response::Info {
-                job: Box::new(JobInfo::from_job(
-                    job,
-                    dependencies.remove(&id).unwrap_or_default(),
-                )),
-            },
-            Err(error) => Response::Error {
-                message: format!("Database error: {error}"),
-            },
-        }
+            .map_err(|error| format!("Database error: {error}"))?;
+        Ok(JobInfo::from_job(
+            job,
+            dependencies.remove(&id).unwrap_or_default(),
+        ))
     }
 
     /// Handle job log path request

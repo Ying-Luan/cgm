@@ -59,11 +59,11 @@ pub(crate) fn check_stop() -> Result<usize, String> {
 ///
 /// # Returns
 ///
-/// * `(usize, String)` - Job ID and log path on success
+/// * `JobInfo` - Persisted details of the submitted job on success
 /// * `String` - Error message on failure
-pub(crate) fn submit_job(request: JobRequest) -> Result<(usize, String), String> {
+pub(crate) fn submit_job(request: JobRequest) -> Result<JobInfo, String> {
     match send_request(&Request::Submit { job: request })? {
-        Response::Submit { id, log_path } => Ok((id, log_path)),
+        Response::Submit { job } => Ok(*job),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
     }
@@ -82,7 +82,7 @@ pub(crate) fn submit_job(request: JobRequest) -> Result<(usize, String), String>
 ///
 /// # Returns
 ///
-/// * `(usize, String)` - New job ID and log path on success
+/// * `JobInfo` - Persisted details of the new job on success
 /// * `String` - Error message on failure
 pub(crate) fn rerun_job(
     id: usize,
@@ -91,7 +91,7 @@ pub(crate) fn rerun_job(
     dependencies: Option<Vec<usize>>,
     required_gpus: Option<usize>,
     log_path: Option<String>,
-) -> Result<(usize, String), String> {
+) -> Result<JobInfo, String> {
     match send_request(&Request::Rerun {
         id,
         context,
@@ -101,7 +101,7 @@ pub(crate) fn rerun_job(
         log_path,
         username: get_current_username(),
     })? {
-        Response::Rerun { id, log_path } => Ok((id, log_path)),
+        Response::Rerun { job } => Ok(*job),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
     }

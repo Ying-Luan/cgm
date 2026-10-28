@@ -1,6 +1,6 @@
 //! Rerun job subcommand
 //!
-//! Create a new job from an existing job's saved configuration.
+//! Rerun a saved job, display the new job's details.
 
 use std::str::FromStr;
 
@@ -8,6 +8,7 @@ use crate::{
     client::rerun_job,
     config::{load_effective, validate_effective},
     macros::green,
+    monitor::show_job_info,
     os::open_log_with_less,
     types::{EffectiveRerunConfig, GpuSelection, RerunContext},
     utils::parse_comma_separated_ids,
@@ -102,17 +103,11 @@ pub(super) fn run(
             .then(|| std::env::vars().collect()),
     };
     match rerun_job(id, context, allowed_gpus, dependencies, require_gpus, log) {
-        Ok((id, log_path)) => {
-            println!(
-                "{}",
-                green!(
-                    "Job rerun submitted successfully. ID: {}, Log: {}",
-                    id,
-                    log_path
-                )
-            );
+        Ok(job) => {
+            println!("{}", green!("Job rerun submitted successfully."));
+            show_job_info(&job, false);
             if !config.detach.value
-                && let Err(e) = open_log_with_less(&log_path, 200, true)
+                && let Err(e) = open_log_with_less(&job.log_path, 200, true)
             {
                 exit_with_error(&format!("Failed to open log viewer: {}", e));
             }

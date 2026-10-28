@@ -199,11 +199,14 @@ pub(crate) fn show_job_info(job: &JobInfo, show_env: bool) {
     if show_env || count == 0 {
         println!("{:<24}{count} {unit}", "Environment:");
     } else {
-        println!("{:<24}{count} {unit} (use --env to show)", "Environment:");
+        println!(
+            "{:<24}{count} {unit} (use cgm info {} --env to show)",
+            "Environment:", job.id
+        );
     }
     if show_env && count > 0 {
         let mut envs = job.envs.iter().collect::<Vec<_>>();
-        envs.sort_by(|(left, _), (right, _)| left.cmp(right));
+        envs.sort_by_key(|(left, _)| *left);
         for (key, value) in envs {
             println!("  {}={}", key.escape_debug(), value.escape_debug());
         }
