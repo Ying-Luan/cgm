@@ -247,6 +247,13 @@ enum Commands {
         /// Job ID
         #[arg(help = "Job ID")]
         id: usize,
+        /// Show all saved environment variables and their values.
+        #[arg(
+            short,
+            long,
+            help = "Show all saved environment variables and their values"
+        )]
+        env: bool,
     },
     /// View job log
     Log {
@@ -319,7 +326,7 @@ pub(crate) fn run() {
             limit,
             long_format,
         } => list::run(all, limit, long_format),
-        Commands::Info { id } => info::run(id),
+        Commands::Info { id, env } => info::run(id, env),
         Commands::Log { id } => log::run(id),
         Commands::Config { command } => config::run(command),
     }
@@ -356,7 +363,9 @@ mod tests {
     #[test]
     fn info_parses_job_id() {
         let cli = Cli::try_parse_from(["cgm", "info", "42"]).unwrap();
-        assert!(matches!(cli.command, Commands::Info { id: 42 }));
+        assert!(matches!(cli.command, Commands::Info { id: 42, env: false }));
+        let cli = Cli::try_parse_from(["cgm", "info", "42", "-e"]).unwrap();
+        assert!(matches!(cli.command, Commands::Info { id: 42, env: true }));
     }
 
     #[test]

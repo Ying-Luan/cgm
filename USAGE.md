@@ -163,11 +163,12 @@ cgm list [OPTIONS]
 ## View Job Info
 
 ```bash
-cgm info <JOB_ID>
+cgm info <JOB_ID> [OPTIONS]
 ```
 
 | Option | Short | Default | Description | Config Key |
 | ------ | ----- | ------- | ----------- | --- |
+| `--env` | `-e` | `false` | Show all saved environment variables and their values | ` ` |
 
 ## View Job Log
 

@@ -160,12 +160,14 @@ pub(crate) fn show_status() {
 
 /// Display all persisted job fields in database column order, then dependencies.
 ///
-/// Environment variables are sorted by name and control characters are escaped.
+/// Environment variables show only their count by default. When expanded,
+/// they are sorted by name and control characters are escaped.
 ///
 /// # Arguments
 ///
 /// * `job` - Complete job details to display.
-pub(crate) fn show_job_info(job: &JobInfo) {
+/// * `show_env` - Expand all saved environment variables and their values.
+pub(crate) fn show_job_info(job: &JobInfo, show_env: bool) {
     let ids = |values: &[usize]| {
         if values.is_empty() {
             "-".to_string()
@@ -192,10 +194,14 @@ pub(crate) fn show_job_info(job: &JobInfo) {
             .unwrap_or_else(|| "-".to_string())
     );
     println!("{:<24}{}", "Required GPUs:", job.required_gpus);
-    if job.envs.is_empty() {
-        println!("{:<24}(empty)", "Environment:");
+    let count = job.envs.len();
+    let unit = if count == 1 { "variable" } else { "variables" };
+    if show_env || count == 0 {
+        println!("{:<24}{count} {unit}", "Environment:");
     } else {
-        println!("Environment:");
+        println!("{:<24}{count} {unit} (use --env to show)", "Environment:");
+    }
+    if show_env && count > 0 {
         let mut envs = job.envs.iter().collect::<Vec<_>>();
         envs.sort_by(|(left, _), (right, _)| left.cmp(right));
         for (key, value) in envs {

@@ -163,11 +163,12 @@ cgm list [OPTIONS]
 ## 查看任务信息
 
 ```bash
-cgm info <JOB_ID>
+cgm info <JOB_ID> [OPTIONS]
 ```
 
 | 参数名称 | 简写 | 默认值 | 说明 | 配置键 |
 | ------- | ---- | ----- | ---- | --- |
+| `--env` | `-e` | `false` | 显示全部保存的环境变量及其值 | ` ` |
 
 ## 查看任务日志
 
