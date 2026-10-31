@@ -30,6 +30,9 @@ use crate::{
 
 use super::{control::Event, scheduler::Scheduler};
 
+/// Grace period between SIGTERM and SIGKILL for job process groups.
+const GRACE: Duration = Duration::from_secs(5);
+
 /// Execute single job
 ///
 /// Opens the job's log file in append mode and redirects stdout/stderr to it,
@@ -111,20 +114,6 @@ impl Task {
             None => Ok(()),
         }
     }
-}
-
-/// Remove tasks whose wait thread has already finished.
-///
-/// # Arguments
-///
-/// * `tasks` - Registered running tasks.
-fn prune_finished(tasks: &mut HashMap<usize, Task>) {
-    tasks.retain(|_, task| {
-        !task
-            .worker
-            .as_ref()
-            .is_some_and(|worker| worker.is_finished())
-    });
 }
 
 /// Terminate process groups, escalating to SIGKILL after the grace period.
@@ -261,215 +250,224 @@ fn launch_job(
     }
 }
 
-/// Schedule and coordinate tasks through a single internal control inbox.
-///
-/// # Arguments
-///
-/// * `db` - Shared database.
-/// * `gpu_pool` - Existing GPU allocation API.
-/// * `interval` - Seconds between scheduling cycles.
-/// * `scheduler` - Scheduler algorithm to use for scheduling pending jobs.
-/// * `events` - Sole receiver of control events.
-/// * `stopping` - Whether the executor is stopping
-/// * `stopped` - Whether the executor has stopped.
-pub(super) fn run_executor(
+/// Coordinates job scheduling, execution, and control.
+pub(super) struct Executor {
+    /// Shared database.
     db: DbPool,
+    /// GPU manager.
     gpu_pool: GpuPool,
-    interval: u32,
-    mut scheduler: Box<dyn Scheduler>,
+    /// Scheduler strategy.
+    scheduler: Box<dyn Scheduler>,
+    /// Sole receiver of control events.
     events: Receiver<Event>,
+    /// Whether the executor is stopping.
     stopping: Arc<AtomicBool>,
+    /// Whether the executor has stopped.
     stopped: Arc<AtomicBool>,
-) {
-    let schedule_db = Arc::clone(&db);
-    let schedule_gpu_pool = Arc::clone(&gpu_pool);
-    let schedule = move |tasks: &mut HashMap<usize, Task>| {
-        schedule_gpu_pool.lock().unwrap().refresh_state();
-        let pending = schedule_db
-            .lock()
-            .unwrap()
-            .get_jobs_by_status(JobStatus::Pending)
-            .unwrap_or_default();
-        let mut launch = |job, gpus| {
-            launch_job(job, gpus, &schedule_db, &schedule_gpu_pool, tasks);
-        };
-        scheduler.schedule(Arc::clone(&schedule_gpu_pool), &mut launch, pending);
-    };
-    run_loop(db, gpu_pool, interval, events, stopping, stopped, schedule);
+    /// Running tasks keyed by job ID.
+    tasks: HashMap<usize, Task>,
+    /// Scheduling interval.
+    interval: Duration,
 }
 
-/// Process lifecycle events and schedule tasks.
-///
-/// # Arguments
-///
-/// * `db` - Task database used for current state and authorization checks.
-/// * `gpu_pool` - GPU manager for tracking task allocations.
-/// * `interval` - Seconds between calls to the synchronous scheduling callback.
-/// * `events` - Lifecycle inbox for control requests.
-/// * `stopping` - Whether the executor is stopping
-/// * `stopped` - Whether the executor has stopped.
-/// * `schedule` - Reserves resources and registers spawned tasks before returning.
-fn run_loop(
-    db: DbPool,
-    gpu_pool: GpuPool,
-    interval: u32,
-    events: Receiver<Event>,
-    stopping: Arc<AtomicBool>,
-    stopped: Arc<AtomicBool>,
-    mut schedule: impl FnMut(&mut HashMap<usize, Task>),
-) {
-    let grace = Duration::from_secs(5);
-    let mut tasks: HashMap<usize, Task> = HashMap::new();
-    let mut next_schedule = Instant::now();
-    loop {
-        prune_finished(&mut tasks);
+impl Executor {
+    /// Create an executor with no running tasks.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - Shared database.
+    /// * `gpu_pool` - GPU manager.
+    /// * `interval` - Seconds between scheduling cycles.
+    /// * `scheduler` - Scheduler algorithm.
+    /// * `events` - Sole receiver of control events.
+    /// * `stopping` - Whether the executor is stopping.
+    /// * `stopped` - Whether the executor has stopped.
+    ///
+    /// # Returns
+    ///
+    /// A new executor.
+    pub(super) fn new(
+        db: DbPool,
+        gpu_pool: GpuPool,
+        interval: u32,
+        scheduler: Box<dyn Scheduler>,
+        events: Receiver<Event>,
+        stopping: Arc<AtomicBool>,
+        stopped: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            db,
+            gpu_pool,
+            scheduler,
+            events,
+            stopping,
+            stopped,
+            tasks: HashMap::new(),
+            interval: Duration::from_secs(u64::from(interval)),
+        }
+    }
 
-        let event = if stopping.load(Ordering::SeqCst) {
-            match events.recv() {
-                Ok(event) => Some(event),
-                Err(_) => return,
-            }
-        } else {
-            match events.recv_timeout(next_schedule.saturating_duration_since(Instant::now())) {
-                Ok(event) => Some(event),
-                Err(mpsc::RecvTimeoutError::Timeout) => None,
-                Err(mpsc::RecvTimeoutError::Disconnected) => return,
-            }
-        };
-        if let Some(event) = event {
-            match event {
-                Event::Cancel {
-                    id,
-                    username,
-                    reply,
-                } => {
-                    let result = cancel_task(&db, &gpu_pool, &tasks, id, &username, grace)
-                        .and_then(|()| {
-                            tasks
+    /// Process lifecycle events and schedule tasks until shutdown.
+    pub(super) fn run(mut self) {
+        let mut next_schedule = Instant::now();
+        loop {
+            self.prune_finished();
+
+            let event = if self.stopping.load(Ordering::SeqCst) {
+                match self.events.recv() {
+                    Ok(event) => Some(event),
+                    Err(_) => return,
+                }
+            } else {
+                match self
+                    .events
+                    .recv_timeout(next_schedule.saturating_duration_since(Instant::now()))
+                {
+                    Ok(event) => Some(event),
+                    Err(mpsc::RecvTimeoutError::Timeout) => None,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                }
+            };
+            if let Some(event) = event {
+                match event {
+                    Event::Cancel {
+                        id,
+                        username,
+                        reply,
+                    } => {
+                        let result = self.cancel(id, &username).and_then(|()| {
+                            self.tasks
                                 .get_mut(&id)
                                 .ok_or_else(|| {
                                     "Running task has no process registration".to_string()
                                 })?
                                 .join()
                         });
-                    if result.is_ok() {
-                        tasks.remove(&id);
+                        if result.is_ok() {
+                            self.tasks.remove(&id);
+                        }
+                        let _ = reply.send(result);
                     }
-                    let _ = reply.send(result);
-                }
-                Event::Stop { force, reply } => {
-                    match stop_tasks(&gpu_pool, &mut tasks, &stopping, force, grace) {
+                    Event::Stop { force, reply } => match self.stop(force) {
                         Ok(()) => {
-                            stopped.store(true, Ordering::SeqCst);
+                            self.stopped.store(true, Ordering::SeqCst);
                             let _ = reply.send(Ok(()));
                             return;
                         }
                         Err(error) => {
                             let _ = reply.send(Err(error));
                         }
-                    }
+                    },
                 }
             }
+            if !self.stopping.load(Ordering::SeqCst) && Instant::now() >= next_schedule {
+                self.schedule();
+                next_schedule = Instant::now() + self.interval;
+            }
         }
-        if !stopping.load(Ordering::SeqCst) && Instant::now() >= next_schedule {
-            schedule(&mut tasks);
-            next_schedule = Instant::now() + Duration::from_secs(u64::from(interval));
-        }
-    }
-}
-
-/// Cancel a running task after rechecking its state, owner, and process.
-///
-/// # Arguments
-///
-/// * `db` - Task database for current state and authorization checks.
-/// * `gpu_pool` - GPU manager holding the registered process ID.
-/// * `tasks` - Registered running tasks.
-/// * `id` - Task ID.
-/// * `username` - Authenticated requester.
-/// * `grace` - SIGTERM grace period before escalating to SIGKILL.
-///
-/// # Returns
-///
-/// Success after the process group was terminated, or an error.
-fn cancel_task(
-    db: &DbPool,
-    gpu_pool: &GpuPool,
-    tasks: &HashMap<usize, Task>,
-    id: usize,
-    username: &str,
-    grace: Duration,
-) -> Result<(), String> {
-    let job = db
-        .lock()
-        .unwrap()
-        .get_job_by_id(id)
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| format!("Job {id} not found"))?;
-    if username != "root" && username != job.username {
-        return Err("Permission denied".to_string());
-    }
-    if job.status != JobStatus::Running {
-        return Err("Job has ended, cannot cancel".to_string());
-    }
-    let task = tasks
-        .get(&id)
-        .ok_or_else(|| "Running task has no process registration".to_string())?;
-    let pid = gpu_pool
-        .lock()
-        .unwrap()
-        .get_first_pid_by_job_id(id)
-        .ok_or_else(|| "Job is still starting; retry cancellation later".to_string())?;
-    task.cancelled.store(true, Ordering::SeqCst);
-    terminate(&[pid], grace)
-}
-
-/// Stop scheduling and optionally terminate all running tasks.
-///
-/// # Arguments
-///
-/// * `gpu_pool` - GPU manager holding registered process IDs.
-/// * `tasks` - Registered running tasks.
-/// * `stopping` - Whether scheduling has been disabled.
-/// * `force` - Terminate running tasks instead of refusing shutdown.
-/// * `grace` - SIGTERM grace period before escalating to SIGKILL.
-///
-/// # Returns
-///
-/// Success after all tasks finalized, or a refusal/error.
-fn stop_tasks(
-    gpu_pool: &GpuPool,
-    tasks: &mut HashMap<usize, Task>,
-    stopping: &AtomicBool,
-    force: bool,
-    grace: Duration,
-) -> Result<(), String> {
-    prune_finished(tasks);
-    if !force {
-        if !tasks.is_empty() {
-            return Err("Running or finishing jobs exist; use --force".to_string());
-        }
-        stopping.store(true, Ordering::SeqCst);
-    } else {
-        let mut pids = Vec::new();
-        for id in tasks.keys() {
-            let pid = gpu_pool
-                .lock()
-                .unwrap()
-                .get_first_pid_by_job_id(*id)
-                .ok_or_else(|| "A job is still starting; retry stop later".to_string())?;
-            pids.push(pid);
-        }
-        for task in tasks.values() {
-            task.cancelled.store(true, Ordering::SeqCst);
-        }
-        stopping.store(true, Ordering::SeqCst);
-        terminate(&pids, grace)?;
-        for task in tasks.values_mut() {
-            task.join()?;
-        }
-        tasks.clear();
     }
 
-    Ok(())
+    /// Schedule pending jobs once.
+    fn schedule(&mut self) {
+        self.gpu_pool.lock().unwrap().refresh_state();
+        let pending = self
+            .db
+            .lock()
+            .unwrap()
+            .get_jobs_by_status(JobStatus::Pending)
+            .unwrap_or_default();
+        let mut launch =
+            |job, gpus| launch_job(job, gpus, &self.db, &self.gpu_pool, &mut self.tasks);
+        self.scheduler
+            .schedule(Arc::clone(&self.gpu_pool), &mut launch, pending);
+    }
+
+    /// Cancel a running task after rechecking its state, owner, and process.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Task ID.
+    /// * `username` - Authenticated requester.
+    ///
+    /// # Returns
+    ///
+    /// Success after the process group was terminated, or an error.
+    fn cancel(&self, id: usize, username: &str) -> Result<(), String> {
+        let job = self
+            .db
+            .lock()
+            .unwrap()
+            .get_job_by_id(id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("Job {id} not found"))?;
+        if username != "root" && username != job.username {
+            return Err("Permission denied".to_string());
+        }
+        if job.status != JobStatus::Running {
+            return Err("Job has ended, cannot cancel".to_string());
+        }
+        let task = self
+            .tasks
+            .get(&id)
+            .ok_or_else(|| "Running task has no process registration".to_string())?;
+        let pid = self
+            .gpu_pool
+            .lock()
+            .unwrap()
+            .get_first_pid_by_job_id(id)
+            .ok_or_else(|| "Job is still starting; retry cancellation later".to_string())?;
+        task.cancelled.store(true, Ordering::SeqCst);
+        terminate(&[pid], GRACE)
+    }
+
+    /// Stop scheduling and optionally terminate all running tasks.
+    ///
+    /// # Arguments
+    ///
+    /// * `force` - Terminate running tasks instead of refusing shutdown.
+    ///
+    /// # Returns
+    ///
+    /// Success after all tasks finalized, or a refusal/error.
+    fn stop(&mut self, force: bool) -> Result<(), String> {
+        self.prune_finished();
+        if !force {
+            if !self.tasks.is_empty() {
+                return Err("Running or finishing jobs exist; use --force".to_string());
+            }
+            self.stopping.store(true, Ordering::SeqCst);
+        } else {
+            let mut pids = Vec::new();
+            for id in self.tasks.keys() {
+                let pid = self
+                    .gpu_pool
+                    .lock()
+                    .unwrap()
+                    .get_first_pid_by_job_id(*id)
+                    .ok_or_else(|| "A job is still starting; retry stop later".to_string())?;
+                pids.push(pid);
+            }
+            for task in self.tasks.values() {
+                task.cancelled.store(true, Ordering::SeqCst);
+            }
+            self.stopping.store(true, Ordering::SeqCst);
+            terminate(&pids, GRACE)?;
+            for task in self.tasks.values_mut() {
+                task.join()?;
+            }
+            self.tasks.clear();
+        }
+
+        Ok(())
+    }
+
+    /// Remove tasks whose wait thread has already finished.
+    fn prune_finished(&mut self) {
+        self.tasks.retain(|_, task| {
+            !task
+                .worker
+                .as_ref()
+                .is_some_and(|worker| worker.is_finished())
+        });
+    }
 }

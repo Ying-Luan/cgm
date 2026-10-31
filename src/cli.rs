@@ -288,6 +288,14 @@ enum Commands {
     },
     /// Manage persistent configuration
     Config {
+        /// Target the system-wide configuration.
+        #[arg(
+            long,
+            default_value = "false",
+            global = true,
+            help = "Target the system-wide configuration"
+        )]
+        system: bool,
         /// Configuration operation
         #[command(subcommand)]
         command: config::ConfigCommand,
@@ -355,7 +363,7 @@ pub(crate) fn run() {
         } => list::run(all, limit, long_format),
         Commands::Info { id, env } => info::run(id, env),
         Commands::Log { id } => log::run(id),
-        Commands::Config { command } => config::run(command),
+        Commands::Config { system, command } => config::run(system, command),
     }
 }
 
@@ -434,6 +442,20 @@ mod tests {
         assert!(Cli::try_parse_from(["cgm", "start", "--user", "--system"]).is_err());
         assert!(Cli::try_parse_from(["cgm", "start", "--user"]).is_ok());
         assert!(Cli::try_parse_from(["cgm", "start", "--system"]).is_ok());
+    }
+
+    #[test]
+    fn config_system_flag_accepts_both_positions() {
+        for argv in [
+            ["cgm", "config", "--system", "show"],
+            ["cgm", "config", "show", "--system"],
+        ] {
+            let cli = Cli::try_parse_from(argv).unwrap();
+            let Commands::Config { system, .. } = cli.command else {
+                panic!("expected config command");
+            };
+            assert!(system);
+        }
     }
 
     #[test]

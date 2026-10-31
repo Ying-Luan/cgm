@@ -22,17 +22,14 @@ use nix::{
 };
 
 use crate::{
-    daemon::{
-        control,
-        executor::run_executor,
-        scheduler::{FifoScheduler, GreedyScheduler, Scheduler},
-        server::Server,
-    },
-    db::DataBase,
-    hardware::GpuManager,
-    macros::green,
-    runtime::Runtime,
-    types::SchedulerKind,
+    db::DataBase, hardware::GpuManager, macros::green, runtime::Runtime, types::SchedulerKind,
+};
+
+use super::{
+    control,
+    executor::Executor,
+    scheduler::{FifoScheduler, GreedyScheduler, Scheduler},
+    server::Server,
 };
 
 impl From<SchedulerKind> for Box<dyn Scheduler> {
@@ -178,7 +175,7 @@ pub(crate) fn start_daemon(
                     .name("cgm-executor".into())
                     .spawn(move || {
                         if ready_to_run.recv().is_ok() {
-                            run_executor(
+                            Executor::new(
                                 db,
                                 gpu_pool,
                                 interval,
@@ -186,7 +183,8 @@ pub(crate) fn start_daemon(
                                 events,
                                 executor_stopping,
                                 executor_stopped,
-                            );
+                            )
+                            .run();
                         }
                     }) {
                     Ok(executor) => executor,

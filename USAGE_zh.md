@@ -185,11 +185,12 @@ cgm log <JOB_ID> [OPTIONS]
 ## 配置
 
 ```bash
-cgm config <COMMAND> [OPTIONS]
+cgm config [OPTIONS] <COMMAND>
 ```
 
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
+| `--system` | ` ` | `false` | 操作系统配置（仅 root） |
 
 ### 初始化配置
 
@@ -200,7 +201,6 @@ cgm config init [OPTIONS]
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
 | `--force` | `-f` | `false` | 覆盖已有的配置文件 |
-| `--system` | ` ` | `false` | 操作系统配置（仅 root） |
 
 ### 设置配置值
 
@@ -210,7 +210,6 @@ cgm config set <KEY> <VALUE> [OPTIONS]
 
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
-| `--system` | ` ` | `false` | 操作系统配置（仅 root） |
 
 即使没有先执行 `init`，`set` 也会创建最小配置。
 
@@ -222,7 +221,6 @@ cgm config unset <KEY> [OPTIONS]
 
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
-| `--system` | ` ` | `false` | 操作系统配置（仅 root） |
 
 ### 获取配置值
 
@@ -233,7 +231,6 @@ cgm config get <KEY> [OPTIONS]
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
 | `--effective` | `-e` | `false` | 显示合并后的有效值 |
-| `--system` | ` ` | `false` | 查看系统配置（仅 root） |
 | `--source` | `-s` | `false` | 显示值的来源 |
 
 ### 查看配置
@@ -245,7 +242,6 @@ cgm config show [OPTIONS]
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
 | `--effective` | `-e` | `false` | 显示合并后的完整有效配置 |
-| `--system` | ` ` | `false` | 查看系统配置（仅 root） |
 | `--source` | `-s` | `false` | 显示值的来源 |
 
 以表格形式展示所有配置值。
@@ -258,7 +254,6 @@ cgm config validate [OPTIONS]
 
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
-| `--system` | ` ` | `false` | 操作系统配置（仅 root） |
 
 ### 查看配置路径
 
@@ -268,7 +263,6 @@ cgm config path [OPTIONS]
 
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
-| `--system` | ` ` | `false` | 操作系统配置（仅 root） |
 
 ### 优先级
 

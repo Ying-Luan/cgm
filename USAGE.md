@@ -185,11 +185,12 @@ cgm log <JOB_ID> [OPTIONS]
 ## Configuration
 
 ```bash
-cgm config <COMMAND> [OPTIONS]
+cgm config [OPTIONS] <COMMAND>
 ```
 
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
+| `--system` | ` ` | `false` | Target the system-wide configuration (root only) |
 
 ### Initialize Configuration
 
@@ -200,7 +201,6 @@ cgm config init [OPTIONS]
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
 | `--force` | `-f` | `false` | Overwrite an existing configuration file |
-| `--system` | ` ` | `false` | Target the system configuration (root only) |
 
 ### Set Configuration Value
 
@@ -210,7 +210,6 @@ cgm config set <KEY> <VALUE> [OPTIONS]
 
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
-| `--system` | ` ` | `false` | Target the system configuration (root only) |
 
 `set` creates the minimal required configuration even without running `init` first.
 
@@ -222,7 +221,6 @@ cgm config unset <KEY> [OPTIONS]
 
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
-| `--system` | ` ` | `false` | Target the system configuration (root only) |
 
 ### Get Configuration Value
 
@@ -233,7 +231,6 @@ cgm config get <KEY> [OPTIONS]
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
 | `--effective` | `-e` | `false` | Show the merged effective value |
-| `--system` | ` ` | `false` | View the system configuration (root only) |
 | `--source` | `-s` | `false` | Show the source of the value |
 
 ### Show Configuration
@@ -245,7 +242,6 @@ cgm config show [OPTIONS]
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
 | `--effective` | `-e` | `false` | Show the merged effective configuration |
-| `--system` | ` ` | `false` | View the system configuration (root only) |
 | `--source` | `-s` | `false` | Show the source of each value |
 
 Displays all configuration values in a table.
@@ -258,7 +254,6 @@ cgm config validate [OPTIONS]
 
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
-| `--system` | ` ` | `false` | Target the system configuration (root only) |
 
 ### Show Configuration Path
 
@@ -268,7 +263,6 @@ cgm config path [OPTIONS]
 
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
-| `--system` | ` ` | `false` | Target the system configuration (root only) |
 
 ### Precedence
 
