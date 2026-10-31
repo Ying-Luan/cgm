@@ -6,7 +6,7 @@ use std::{io::Write, time::Duration};
 
 use crate::{
     os::get_current_username,
-    runtime::{peer_uid, socket},
+    runtime::{connection_uid, socket},
     types::{
         DaemonInfo, DeleteTarget, GpuInfo, GpuSelection, JobInfo, JobPrintInfo, JobRequest,
         Request, RerunContext, Response,
@@ -37,7 +37,7 @@ fn send_request(request: &Request) -> Result<Response, String> {
         socket::connect()
     }
     .map_err(|error| format!("Failed to connect to daemon: {}", error))?;
-    let peer = peer_uid(&stream).map_err(|error| error.to_string())?;
+    let owner = connection_uid(&stream).map_err(|error| error.to_string())?;
     stream
         .set_read_timeout(Some(Duration::from_secs(
             if matches!(request, Request::Stop { .. } | Request::Cancel { .. }) {
@@ -58,7 +58,7 @@ fn send_request(request: &Request) -> Result<Response, String> {
     let response: Response = serde_json::from_reader(&stream)
         .map_err(|error| format!("Failed to receive response: {}", error))?;
     if let Response::Status { daemon, .. } = &response
-        && daemon.owner_uid != peer.as_raw()
+        && daemon.owner_uid != owner.as_raw()
     {
         return Err("Daemon status owner does not match socket credentials".into());
     }

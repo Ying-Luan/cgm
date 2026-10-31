@@ -4,7 +4,7 @@ mod identity;
 mod paths;
 pub(crate) mod socket;
 
-pub(crate) use identity::{authorize, peer_uid};
+pub(crate) use identity::{authorize, connection_uid};
 pub(crate) use paths::RuntimePaths;
 
 use std::path::PathBuf;

@@ -1,4 +1,4 @@
-//! Authentication of socket peers and requests.
+//! Authentication of socket callers and requests.
 
 use std::{io, os::unix::net::UnixStream};
 
@@ -13,71 +13,71 @@ use crate::types::Request;
 ///
 /// # Arguments
 ///
-/// * `stream` - Connected Unix socket whose peer credentials are queried.
+/// * `stream` - Connected Unix socket whose credentials are queried.
 ///
 /// # Returns
 ///
-/// The peer's kernel-reported UID.
-pub(crate) fn peer_uid(stream: &UnixStream) -> io::Result<Uid> {
+/// The kernel-reported UID of the process on the other end of the socket.
+pub(crate) fn connection_uid(stream: &UnixStream) -> io::Result<Uid> {
     getsockopt(stream, PeerCredentials)
         .map(|credentials| Uid::from_raw(credentials.uid()))
         .map_err(io::Error::from)
 }
 
-/// Check whether a daemon peer is trusted by the caller.
+/// Check whether a daemon owner is trusted by the caller.
 ///
 /// # Arguments
 ///
-/// * `peer` - Kernel-reported daemon UID.
+/// * `owner` - Kernel-reported daemon UID.
 /// * `caller` - Effective client UID.
 ///
 /// # Returns
 ///
-/// Whether the peer is root or has the same UID as the caller.
-pub(super) fn trusted_peer(peer: Uid, caller: Uid) -> bool {
-    peer.is_root() || peer == caller
+/// Whether the owner is root or has the same UID as the caller.
+pub(super) fn trusted_owner(owner: Uid, caller: Uid) -> bool {
+    owner.is_root() || owner == caller
 }
 
-/// Authenticate the kernel-provided UID and discard request-supplied identities.
+/// Authenticate the kernel-provided caller UID and discard request-supplied identities.
 ///
 /// # Arguments
 ///
 /// * `req` - Decoded request; a submission's username is replaced after authentication.
-/// * `peer` - Kernel-reported client UID.
+/// * `caller` - Kernel-reported caller UID.
 /// * `owner` - Effective daemon owner UID.
 ///
 /// # Returns
 ///
-/// The authorized request and resolved requester name. Basic status bypasses account
+/// The authorized request and resolved caller name. Basic status bypasses account
 /// lookup and returns an empty name; job-level permission checks remain with handlers.
 pub(crate) fn authorize(
     mut req: Request,
-    peer: Uid,
+    caller: Uid,
     owner: Uid,
 ) -> Result<(Request, String), String> {
     // Basic status does not use an account name.
     if matches!(req, Request::Status) {
         return Ok((req, String::new()));
     }
-    if !owner.is_root() && peer != owner && !peer.is_root() && !matches!(req, Request::Status) {
+    if !owner.is_root() && caller != owner && !caller.is_root() && !matches!(req, Request::Status) {
         return Err("Permission denied: personal daemon belongs to another user".to_string());
     }
     if matches!(req, Request::Stop { .. } | Request::Delete { .. })
-        && peer != owner
-        && !peer.is_root()
+        && caller != owner
+        && !caller.is_root()
     {
         return Err("Permission denied: daemon owner required".to_string());
     }
-    let user = User::from_uid(peer)
-        .map_err(|error| format!("Failed to resolve peer UID {}: {}", peer, error))?
-        .ok_or_else(|| format!("No user found for peer UID {}", peer))?;
+    let user = User::from_uid(caller)
+        .map_err(|error| format!("Failed to resolve caller UID {}: {}", caller, error))?
+        .ok_or_else(|| format!("No user found for caller UID {}", caller))?;
 
     // Existing job permissions use names, so reject ambiguous or privileged aliases.
     let named = User::from_name(&user.name)
-        .map_err(|error| format!("Failed to resolve peer username: {}", error))?
-        .ok_or_else(|| "Peer username not found".to_string())?;
-    if named.uid != peer {
-        return Err("Peer username does not uniquely identify its UID".to_string());
+        .map_err(|error| format!("Failed to resolve caller username: {}", error))?
+        .ok_or_else(|| "Caller username not found".to_string())?;
+    if named.uid != caller {
+        return Err("Caller username does not uniquely identify its UID".to_string());
     }
     if let Request::Submit { job } = &mut req {
         job.username = user.name.clone();
@@ -91,7 +91,7 @@ mod tests {
     use crate::types::{DeleteTarget, GpuSelection, JobRequest};
 
     #[test]
-    fn basic_status_does_not_require_a_peer_account() {
+    fn basic_status_does_not_require_a_caller_account() {
         let (request, username) = authorize(
             Request::Status,
             Uid::from_raw(u32::MAX - 1),
@@ -144,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn peer_identity_replaces_request_usernames() {
+    fn caller_identity_replaces_request_usernames() {
         let uid = Uid::effective();
         let user = User::from_uid(uid).unwrap().unwrap();
         let (_, identity) = authorize(

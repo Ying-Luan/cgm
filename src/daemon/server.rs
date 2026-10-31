@@ -22,7 +22,7 @@ use crate::{
     db::DbPool,
     hardware::GpuPool,
     macros::{green, red},
-    runtime::{Runtime, authorize, peer_uid, socket},
+    runtime::{Runtime, authorize, connection_uid, socket},
     types::{
         DaemonMode, DaemonState, DeleteTarget, GpuSelection, Job, JobInfo, JobPrintInfo,
         JobRequest, JobStatus, Request, RerunContext, Response,
@@ -119,13 +119,13 @@ impl Server {
     fn handle_connection(&self, mut stream: UnixStream) {
         let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
         let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
-        let peer = match peer_uid(&stream) {
+        let caller = match connection_uid(&stream) {
             Ok(uid) => uid,
             Err(error) => {
                 let _ = serde_json::to_writer(
                     &stream,
                     &Response::Error {
-                        message: format!("Failed to obtain peer credentials: {}", error),
+                        message: format!("Failed to obtain caller credentials: {}", error),
                     },
                 );
                 return;
@@ -143,12 +143,12 @@ impl Server {
         let response = match serde_json::from_str::<Request>(&buffer) {
             Ok(req) => {
                 println!("{}", green!("Received request: {:?}", req));
-                match authorize(req, peer, Uid::effective()) {
+                match authorize(req, caller, Uid::effective()) {
                     Ok((req, username)) => {
                         let foreign_status = matches!(req, Request::Status)
                             && !Uid::effective().is_root()
-                            && peer != Uid::effective()
-                            && !peer.is_root();
+                            && caller != Uid::effective()
+                            && !caller.is_root();
                         let mut response = self.dispatch(req, &username);
                         if foreign_status && let Response::Status { gpus, .. } = &mut response {
                             gpus.clear();

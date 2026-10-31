@@ -12,7 +12,7 @@ use nix::unistd::Uid;
 
 use crate::constants::SOCKET_NAME;
 
-use super::identity::{peer_uid, trusted_peer};
+use super::identity::{connection_uid, trusted_owner};
 
 /// Bind before daemon startup performs any filesystem or database side effects.
 ///
@@ -23,15 +23,15 @@ pub(crate) fn bind() -> io::Result<UnixListener> {
     UnixListener::bind_addr(&SocketAddr::from_abstract_name(SOCKET_NAME)?)
 }
 
-/// Connect only to a peer owned by root or the caller.
+/// Connect only to a daemon owned by root or the caller.
 ///
 /// # Returns
 ///
-/// A connected stream after checking kernel peer credentials.
+/// A connected stream after checking the daemon owner's credentials.
 pub(crate) fn connect() -> io::Result<UnixStream> {
     let stream = connect_status()?;
-    let uid = peer_uid(&stream)?;
-    if !trusted_peer(uid, Uid::effective()) {
+    let owner = connection_uid(&stream)?;
+    if !trusted_owner(owner, Uid::effective()) {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
             "Untrusted daemon owner",
@@ -41,7 +41,7 @@ pub(crate) fn connect() -> io::Result<UnixStream> {
     Ok(stream)
 }
 
-/// Connect for a non-sensitive status request; the peer remains untrusted.
+/// Connect for a non-sensitive status request; the daemon owner remains untrusted.
 ///
 /// # Returns
 ///
@@ -66,19 +66,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn peer_credentials_are_kernel_supplied() {
+    fn connection_uid_is_kernel_supplied() {
         let (a, b) = UnixStream::pair().unwrap();
-        assert_eq!(peer_uid(&a).unwrap(), Uid::effective());
-        assert_eq!(peer_uid(&b).unwrap(), Uid::effective());
+        assert_eq!(connection_uid(&a).unwrap(), Uid::effective());
+        assert_eq!(connection_uid(&b).unwrap(), Uid::effective());
     }
 
     #[test]
     fn root_does_not_trust_personal_daemons() {
         let root = Uid::from_raw(0);
         let user = Uid::from_raw(12345);
-        assert!(!trusted_peer(user, root));
-        assert!(trusted_peer(root, user));
-        assert!(trusted_peer(user, user));
-        assert!(!trusted_peer(user, Uid::from_raw(12346)));
+        assert!(!trusted_owner(user, root));
+        assert!(trusted_owner(root, user));
+        assert!(trusted_owner(user, user));
+        assert!(!trusted_owner(user, Uid::from_raw(12346)));
     }
 }
