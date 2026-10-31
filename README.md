@@ -4,6 +4,8 @@
 
 A lightweight GPU job scheduler
 
+[![Crates.io Version](https://img.shields.io/crates/v/cgm)](https://crates.io/crates/cgm)
+[![Crates.io Size](https://img.shields.io/crates/size/cgm)](https://crates.io/crates/cgm)
 [![GitHub License](https://img.shields.io/github/license/Ying-Luan/cgm)](LICENSE)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/8853a13a90ac4417b70c544c297655ac)](https://app.codacy.com/gh/Ying-Luan/cgm/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
@@ -109,7 +111,7 @@ cgm/
 
 * `Linux` OS
 * NVIDIA GPU and driver
-* `Cargo` (only for building from source)
+* `Cargo` (only for building from source or using `cargo install`)
 * `less` (only for viewing logs)
 * `make` (only for using make install)
 
@@ -124,6 +126,12 @@ curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/Ying-Lua
 ```
 
 The script installs to the system directory `/usr/local/bin/cgm` by default. Set `CGM_INSTALL_MODE=user` before `bash` to install to `~/.local/bin/cgm`.
+
+### Install with cargo
+
+```bash
+cargo install cgm
+```
 
 ### Build from Source
 

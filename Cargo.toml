@@ -7,8 +7,16 @@ license = "MIT"
 homepage = "https://github.com/Ying-Luan/cgm"
 repository = "https://github.com/Ying-Luan/cgm"
 readme = "README.md"
-authors = ["Ying Luan"]
+authors = ["Ying Luan <3433800035@qq.com>"]
 keywords = ["gpu", "rust", "scheduler"]
+categories = ["command-line-utilities", "hardware-support"]
+exclude = [
+    ".github/",
+    "cliff.toml",
+    "dist-workspace.toml",
+    "install.sh",
+    "Makefile",
+]
 
 [dependencies]
 clap = { version = "4.6.0", features = ["derive"] }

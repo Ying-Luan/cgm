@@ -4,6 +4,8 @@
 
 一个轻量级的 GPU 任务调度器
 
+[![Crates.io Version](https://img.shields.io/crates/v/cgm)](https://crates.io/crates/cgm)
+[![Crates.io Size](https://img.shields.io/crates/size/cgm)](https://crates.io/crates/cgm)
 [![GitHub License](https://img.shields.io/github/license/Ying-Luan/cgm)](LICENSE)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/8853a13a90ac4417b70c544c297655ac)](https://app.codacy.com/gh/Ying-Luan/cgm/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
@@ -109,7 +111,7 @@ cgm/
 
 * `Linux` 操作系统
 * NVIDIA GPU 和驱动
-* `Cargo`（仅从源码构建时需要）
+* `Cargo`（从源码构建或使用 `cargo install` 时需要）
 * `less`（仅查看日志时需要）
 * `make`（仅使用 make 安装时需要）
 
@@ -124,6 +126,12 @@ curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/Ying-Lua
 ```
 
 脚本默认系统安装到 `/usr/local/bin/cgm`。在 `bash` 前设置 `CGM_INSTALL_MODE=user` 可安装到 `~/.local/bin/cgm`。
+
+### 使用 cargo 安装
+
+```bash
+cargo install cgm
+```
 
 ### 从源码构建
 
