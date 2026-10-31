@@ -58,6 +58,8 @@ cgm/
 │   ├── constants.rs         # 全局常量
 │   ├── daemon.rs            # 守护进程入口
 │   ├── daemon/
+│   │   ├── control.rs       # 取消/停止事件与发送
+│   │   ├── executor.rs      # 任务执行与 mpsc 生命周期控制
 │   │   ├── process.rs       # 守护进程启停
 │   │   ├── scheduler.rs     # 调度器 trait 与公共函数
 │   │   ├── scheduler/
@@ -75,9 +77,15 @@ cgm/
 │   ├── main.rs              # 程序入口
 │   ├── monitor.rs           # 状态展示（show_status、show_list）
 │   ├── os.rs                # 用户信息与权限检查
+│   ├── runtime.rs           # 守护进程模式、身份与运行元数据
+│   ├── runtime/
+│   │   ├── identity.rs      # Socket 对端凭据与权限校验
+│   │   ├── paths.rs         # 状态路径与权限
+│   │   └── socket.rs        # 机器级 abstract socket
 │   ├── types.rs             # 类型模块入口
 │   ├── types/
 │   │   ├── config.rs        # 配置类型、作用域与来源
+│   │   ├── daemon.rs        # 守护进程模式、状态与元数据
 │   │   ├── gpu.rs           # GpuInfo、GpuState
 │   │   ├── ipc.rs           # IPC 消息类型
 │   │   ├── job.rs           # Job、JobStatus
@@ -115,6 +123,8 @@ cgm/
 curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/Ying-Luan/cgm/master/install.sh | bash
 ```
 
+脚本默认系统安装到 `/usr/local/bin/cgm`。在 `bash` 前设置 `CGM_INSTALL_MODE=user` 可安装到 `~/.local/bin/cgm`。
+
 ### 从源码构建
 
 > 国内用户可使用 Gitee 镜像：`git clone https://gitee.com/ying_luan/cgm.git`
@@ -124,7 +134,8 @@ curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/Ying-Lua
 ```bash
 git clone https://github.com/Ying-Luan/cgm.git
 cd cgm
-make install
+make install MODE=user
+# 或 make install MODE=system
 ```
 
 方式二：手动编译
@@ -144,7 +155,7 @@ sudo chmod +x /usr/local/bin/cgm
 常用命令速查：
 
 ```bash
-sudo cgm start                           # 启动守护进程
+cgm start --user
 cgm config set submit.detach true        # 设置持久默认值
 cgm submit -g 1 -- python main.py        # 提交任务
 cgm rerun 1 -c e,d                       # 使用当前环境变量和工作目录重新运行任务
@@ -156,6 +167,6 @@ cgm cancel 1                             # 取消任务
 ### 守护进程日志
 
 ```bash
-cat /tmp/cgm/cgm.out   # 标准输出日志
-cat /tmp/cgm/cgm.err   # 错误日志
+cat ~/.local/state/cgm/cgm.out   # 个人守护进程
+sudo cat /var/lib/cgm/cgm.err    # 系统守护进程
 ```

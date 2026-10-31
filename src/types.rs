@@ -3,6 +3,7 @@
 //! Defines GPU state, job status, request/response and other core data structures.
 
 mod config;
+mod daemon;
 mod gpu;
 mod ipc;
 mod job;
@@ -12,6 +13,7 @@ pub(crate) use config::{
     Config, ConfigScope, EffectiveConfig, EffectiveListConfig, EffectiveRerunConfig,
     EffectiveStartConfig, EffectiveSubmitConfig, Source,
 };
+pub(crate) use daemon::{DaemonInfo, DaemonMode, DaemonState};
 pub(crate) use gpu::{GpuInfo, GpuPrintInfo, GpuSelection, GpuState};
 pub(crate) use ipc::{DeleteTarget, Request, RerunContext, Response};
 pub(crate) use job::{Job, JobInfo, JobPrintInfo, JobRequest, JobStatus};

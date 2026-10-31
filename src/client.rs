@@ -2,14 +2,14 @@
 //!
 //! Communicate with daemon via Unix Domain Socket, submit jobs and query GPU status.
 
-use std::{io::Write, os::unix::net::UnixStream};
+use std::{io::Write, time::Duration};
 
 use crate::{
-    constants::SOCKET_PATH,
     os::get_current_username,
+    runtime::{peer_uid, socket},
     types::{
-        DeleteTarget, GpuInfo, GpuSelection, JobInfo, JobPrintInfo, JobRequest, Request,
-        RerunContext, Response,
+        DaemonInfo, DeleteTarget, GpuInfo, GpuSelection, JobInfo, JobPrintInfo, JobRequest,
+        Request, RerunContext, Response,
     },
 };
 
@@ -27,25 +27,70 @@ fn send_request(request: &Request) -> Result<Response, String> {
     let json = serde_json::to_string(request)
         .map_err(|e| format!("Failed to serialize request: {}", e))?;
 
-    let mut stream =
-        UnixStream::connect(SOCKET_PATH).map_err(|_| "Failed to connect to daemon".to_string())?;
+    // Root may manage a personal daemon with Stop.
+    // All other business requests still require a trusted daemon owner.
+    let mut stream = if matches!(request, Request::Status)
+        || (matches!(request, Request::Stop { .. }) && nix::unistd::Uid::effective().is_root())
+    {
+        socket::connect_status()
+    } else {
+        socket::connect()
+    }
+    .map_err(|error| format!("Failed to connect to daemon: {}", error))?;
+    let peer = peer_uid(&stream).map_err(|error| error.to_string())?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(
+            if matches!(request, Request::Stop { .. } | Request::Cancel { .. }) {
+                35
+            } else {
+                10
+            },
+        )))
+        .map_err(|error| error.to_string())?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(10)))
+        .map_err(|error| error.to_string())?;
     stream
         .write_all(json.as_bytes())
-        .map_err(|e| format!("Failed to send request: {}", e))?;
+        .map_err(|error| format!("Failed to send request: {}", error))?;
     stream.shutdown(std::net::Shutdown::Write).ok();
 
-    serde_json::from_reader(&stream).map_err(|e| format!("Failed to receive response: {}", e))
+    let response: Response = serde_json::from_reader(&stream)
+        .map_err(|error| format!("Failed to receive response: {}", error))?;
+    if let Response::Status { daemon, .. } = &response
+        && daemon.owner_uid != peer.as_raw()
+    {
+        return Err("Daemon status owner does not match socket credentials".into());
+    }
+
+    Ok(response)
 }
 
-/// Check number of running jobs
+/// Request authorized shutdown and wait for the executor's cleanup acknowledgement.
+///
+/// # Arguments
+///
+/// * `force` - Terminate running tasks and wait for cleanup before stopping.
 ///
 /// # Returns
 ///
-/// * `usize` - Number of running jobs
-/// * `String` - Error message
-pub(crate) fn check_stop() -> Result<usize, String> {
-    match send_request(&Request::StopCheck)? {
-        Response::StopCheck { running_count } => Ok(running_count),
+/// Success after cleanup and release of the daemon socket, or an error.
+pub(crate) fn stop(force: bool) -> Result<(), String> {
+    match send_request(&Request::Stop { force })? {
+        Response::Stop => {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            loop {
+                match socket::bind() {
+                    Ok(_) => return Ok(()),
+                    Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {}
+                    Err(error) => return Err(format!("Failed to confirm daemon exit: {error}")),
+                }
+                if std::time::Instant::now() >= deadline {
+                    return Err("Shutdown completed but daemon socket is still occupied".into());
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
     }
@@ -154,9 +199,9 @@ pub(crate) fn delete_job(target: DeleteTarget) -> Result<usize, String> {
 ///
 /// * `Vec<GpuInfo>` - GPU info list
 /// * `String` - Error message
-pub(crate) fn query_gpu_status() -> Result<Vec<GpuInfo>, String> {
+pub(crate) fn query_gpu_status() -> Result<(Vec<GpuInfo>, DaemonInfo), String> {
     match send_request(&Request::Status)? {
-        Response::Status { gpus } => Ok(gpus),
+        Response::Status { gpus, daemon } => Ok((gpus, daemon)),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
     }

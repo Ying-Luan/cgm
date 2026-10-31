@@ -5,10 +5,10 @@ set -euo pipefail
 BINARY_NAME="cgm"
 GITEE_REPOSITORY="ying_luan/cgm"
 GITHUB_REPOSITORY="Ying-Luan/cgm"
-INSTALL_DIR="/usr/local/bin"
 TARGET="x86_64-unknown-linux-gnu"
 
 mirror="${CGM_MIRROR:-github}"
+mode="${CGM_INSTALL_MODE:-system}"
 
 die() {
     printf 'Error: %s\n' "$*" >&2
@@ -36,18 +36,21 @@ require_command() {
 
 [[ $# -eq 0 ]] || die "This script does not accept arguments"
 
-for command_name in curl grep install mkdir mktemp rm sed sha256sum sudo tar uname xz; do
+for command_name in curl install mkdir mktemp rm sha256sum tar uname xz; do
     require_command "$command_name"
 done
 
+case "$mode" in
+    user) INSTALL_DIR="${HOME:?HOME must be set}/.local/bin" ;;
+    system)
+        INSTALL_DIR="/usr/local/bin"
+        if [[ "$EUID" -ne 0 ]]; then require_command sudo; fi
+        ;;
+    *) die "CGM_INSTALL_MODE must be user or system" ;;
+esac
+
 [[ "$(uname -s)" == "Linux" ]] || die "Only Linux is supported"
 [[ "$(uname -m)" == "x86_64" ]] || die "Unsupported architecture: $(uname -m)"
-
-if cgm status 2>/dev/null \
-    | sed 's/\x1b\[[0-9;]*m//g' \
-    | grep "Daemon: ACTIVE" >/dev/null; then
-    die "CGM daemon is running. Run 'sudo cgm stop' before installing"
-fi
 
 archive_name="$BINARY_NAME-$TARGET.tar.xz"
 checksum_name="$archive_name.sha256"
@@ -95,9 +98,19 @@ archive_dir="${archive_name%.tar.xz}"
 source_binary="$temp_dir/extracted/$archive_dir/$BINARY_NAME"
 [[ -f "$source_binary" ]] || die "Release archive does not contain $BINARY_NAME"
 
+if "$source_binary" status --quiet; then
+    die "cgm is already running. Stop the daemon as its owner before installing"
+else
+    status=$?
+    [[ "$status" -eq 1 ]] || die "Cannot verify daemon status (status --quiet returned $status); refusing installation"
+fi
+
 # Install the binary
-sudo mkdir -p "$INSTALL_DIR"
 install_path="$INSTALL_DIR/$BINARY_NAME"
-sudo install -m 0755 "$source_binary" "$install_path"
+if [[ "$mode" == system && "$EUID" -ne 0 ]]; then
+    sudo install -D -m 0755 "$source_binary" "$install_path"
+else
+    install -D -m 0755 "$source_binary" "$install_path"
+fi
 
 printf 'Installed %s to %s\n' "$("$install_path" --version)" "$install_path"

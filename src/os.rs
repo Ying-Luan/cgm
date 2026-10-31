@@ -1,11 +1,10 @@
 //! OS utilities module
 //!
-//! Provides current user info and permission checks.
+//! Provides current user info and log viewing.
+
+use std::process::Command;
 
 use nix::unistd::{Uid, User};
-use std::process::{self, Command};
-
-use crate::macros::red;
 
 /// Get current username
 ///
@@ -18,16 +17,6 @@ pub(crate) fn get_current_username() -> String {
     match User::from_uid(Uid::current()) {
         Ok(Some(user)) => user.name,
         _ => "unknown".to_string(),
-    }
-}
-
-/// Check if running as root
-///
-/// If not root, print error message and exit
-pub(crate) fn require_root() {
-    if !Uid::effective().is_root() {
-        eprintln!("{}", red!("This command must be run as sudo."));
-        process::exit(1);
     }
 }
 

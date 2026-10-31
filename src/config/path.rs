@@ -4,7 +4,10 @@ use std::{env, path::PathBuf};
 
 use nix::unistd::{Uid, User};
 
-use crate::{constants::GLOBAL_CONFIG_PATH, types::ConfigScope};
+use crate::{
+    constants::{DEFAULT_USER_CONFIG_DIR, SYSTEM_CONFIG_PATH, USER_CONFIG_PATH},
+    types::ConfigScope,
+};
 
 /// Get the configuration path for the given scope.
 ///
@@ -17,7 +20,7 @@ use crate::{constants::GLOBAL_CONFIG_PATH, types::ConfigScope};
 /// The configuration path for the given scope or an error message.
 pub(crate) fn config_path(scope: ConfigScope) -> Result<PathBuf, String> {
     match scope {
-        ConfigScope::Global => Ok(PathBuf::from(GLOBAL_CONFIG_PATH)),
+        ConfigScope::System => Ok(PathBuf::from(SYSTEM_CONFIG_PATH)),
         ConfigScope::User => user_config_path(),
     }
 }
@@ -35,11 +38,14 @@ pub(super) fn user_config_path() -> Result<PathBuf, String> {
         if !config_home.is_absolute() {
             return Err("XDG_CONFIG_HOME must be an absolute path".to_string());
         }
-        return Ok(config_home.join("cgm/config.toml"));
+        return Ok(config_home.join(USER_CONFIG_PATH));
     }
 
     let user = User::from_uid(Uid::effective())
         .map_err(|error| format!("Failed to resolve current user: {}", error))?
         .ok_or_else(|| "Failed to resolve current user's home directory".to_string())?;
-    Ok(user.dir.join(".config/cgm/config.toml"))
+    Ok(user
+        .dir
+        .join(DEFAULT_USER_CONFIG_DIR)
+        .join(USER_CONFIG_PATH))
 }

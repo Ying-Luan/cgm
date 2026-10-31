@@ -34,28 +34,30 @@
 ## 启动守护进程
 
 ```bash
-sudo cgm start [OPTIONS]
+cgm start [OPTIONS]
 ```
 
 | 参数名称 | 简写 | 默认值 | 说明 | 配置键 |
 | ------- | ---- | ----- | ---- | --- |
+| `--system` | | `false` | 以 root 启动系统守护进程 | |
+| `--user` | | `false` | 以非 root 用户启动个人守护进程 | |
 | `--force` | `-f` | `false` | 重新建立数据库并强制启动。用于数据库文件损坏的情况 | ` ` |
 | `--gpus <GPU_LIST>` | `-g <GPU_LIST>` | `all` | 指定 CGM 管理的 GPU 列表，逗号分隔，如 "0,1,2,3" 或 "all" 表示全部 GPU | `start.gpus` |
 | `--interval <N>` | `-i <N>` | `10` | 设置调度间隔（秒） | `start.interval` |
 | `--scheduler <NAME>` | `-s <NAME>` | `greedy` | 指定调度策略。可选值：greedy、fifo | `start.scheduler` |
 | `--threshold <N>` | `-t <N>` | `10` | 设置 GPU 内存使用率阈值(%)。超过此值认为被外部占用 | `start.threshold` |
 
-`start.*` 配置项仅 root 可写入。
-
 ## 关闭守护进程
 
 ```bash
-sudo cgm stop [OPTIONS]
+cgm stop [OPTIONS]
 ```
 
 | 参数名称 | 简写 | 默认值 | 说明 | 配置键 |
 | ------- | ---- | ----- | ---- | --- |
-| `--force` | `-f` | `false` | 强制停止。即使有任务正在运行也立即关闭 | ` ` |
+| `--force` | `-f` | `false` | 终止已登记的活动任务并等待收尾 | ` ` |
+
+仅 daemon owner 或 root 可以停止守护进程。
 
 ## 提交任务
 
@@ -127,7 +129,7 @@ cgm cancel <JOB_ID> [OPTIONS]
 ## 删除任务
 
 ```bash
-sudo cgm delete [JOB_ID] [OPTIONS]
+cgm delete [JOB_ID] [OPTIONS]
 ```
 
 | 参数名称 | 简写 | 默认值 | 说明 | 配置键 |
@@ -145,6 +147,7 @@ cgm status [OPTIONS]
 
 | 参数名称 | 简写 | 默认值 | 说明 | 配置键 |
 | ------- | ---- | ----- | ---- | --- |
+| `--quiet` | | `false` | cgm 已运行时退出码为 0，未运行时为 1，检查出错时为 2 | |
 
 ## 查看任务列表
 
@@ -197,7 +200,7 @@ cgm config init [OPTIONS]
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
 | `--force` | `-f` | `false` | 覆盖已有的配置文件 |
-| `--global` | ` ` | `false` | 操作全局配置 |
+| `--system` | ` ` | `false` | 操作系统配置（仅 root） |
 
 ### 设置配置值
 
@@ -207,7 +210,7 @@ cgm config set <KEY> <VALUE> [OPTIONS]
 
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
-| `--global` | ` ` | `false` | 操作全局配置 |
+| `--system` | ` ` | `false` | 操作系统配置（仅 root） |
 
 即使没有先执行 `init`，`set` 也会创建最小配置。
 
@@ -219,7 +222,7 @@ cgm config unset <KEY> [OPTIONS]
 
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
-| `--global` | ` ` | `false` | 操作全局配置 |
+| `--system` | ` ` | `false` | 操作系统配置（仅 root） |
 
 ### 获取配置值
 
@@ -230,10 +233,8 @@ cgm config get <KEY> [OPTIONS]
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
 | `--effective` | `-e` | `false` | 显示合并后的有效值 |
-| `--global` | ` ` | `false` | 查看全局配置层的值 |
+| `--system` | ` ` | `false` | 查看系统配置（仅 root） |
 | `--source` | `-s` | `false` | 显示值的来源 |
-
-不带参数时显示用户配置层的值。
 
 ### 查看配置
 
@@ -244,7 +245,7 @@ cgm config show [OPTIONS]
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
 | `--effective` | `-e` | `false` | 显示合并后的完整有效配置 |
-| `--global` | ` ` | `false` | 查看全局配置层的值 |
+| `--system` | ` ` | `false` | 查看系统配置（仅 root） |
 | `--source` | `-s` | `false` | 显示值的来源 |
 
 以表格形式展示所有配置值。
@@ -257,7 +258,7 @@ cgm config validate [OPTIONS]
 
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
-| `--global` | ` ` | `false` | 操作全局配置 |
+| `--system` | ` ` | `false` | 操作系统配置（仅 root） |
 
 ### 查看配置路径
 
@@ -267,8 +268,8 @@ cgm config path [OPTIONS]
 
 | 参数名称 | 简写 | 默认值 | 说明 |
 | ------- | ---- | ----- | ---- |
-| `--global` | ` ` | `false` | 操作全局配置 |
+| `--system` | ` ` | `false` | 操作系统配置（仅 root） |
 
 ### 优先级
 
-运行时的优先级为：显式命令行参数 > 用户配置 > 全局配置 > 内置默认值。
+运行时的优先级为：显式命令行参数 > 所选配置文件 > 内置默认值。

@@ -15,7 +15,7 @@ mod stop;
 mod submit;
 mod utils;
 
-use clap::{Parser, Subcommand};
+use clap::{ArgGroup, Parser, Subcommand};
 
 use crate::types::SchedulerKind;
 
@@ -37,7 +37,23 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Start daemon
+    #[command(arg_required_else_help = true)]
+    #[command(group(ArgGroup::new("mode").required(true).args(["user", "system"])))]
     Start {
+        /// Run as the current non-root user
+        #[arg(
+            long,
+            default_value = "false",
+            help = "Run as the current non-root user"
+        )]
+        user: bool,
+        /// Run as the system daemon (root only)
+        #[arg(
+            long,
+            default_value = "false",
+            help = "Run as the system daemon (root only)"
+        )]
+        system: bool,
         /// Force start. Recreates database. Used when database is corrupted
         #[arg(
             short,
@@ -77,12 +93,12 @@ enum Commands {
     },
     /// Stop daemon
     Stop {
-        /// Force stop. Shuts down even if jobs are running
+        /// Terminate running tasks and wait for cleanup before stopping
         #[arg(
             short,
             long,
             default_value = "false",
-            help = "Force stop. Shuts down even if jobs are running"
+            help = "Terminate running tasks and wait for cleanup before stopping"
         )]
         force: bool,
     },
@@ -219,7 +235,16 @@ enum Commands {
         status: Option<String>,
     },
     /// View status
-    Status,
+    Status {
+        /// Exit 0 if active, 1 if inactive, 2 if uncertain
+        #[arg(
+            short,
+            long,
+            default_value = "false",
+            help = "Exit 0 if active, 1 if inactive, 2 if uncertain"
+        )]
+        quiet: bool,
+    },
     /// View job list
     List {
         /// Show all jobs without limit
@@ -275,12 +300,14 @@ pub(crate) fn run() {
 
     match cli.command {
         Commands::Start {
+            user,
+            system: _,
             force,
             gpus,
             interval,
             scheduler,
             threshold,
-        } => start::run(force, gpus, interval, scheduler, threshold),
+        } => start::run(user, force, gpus, interval, scheduler, threshold),
         Commands::Stop { force } => stop::run(force),
         Commands::Submit {
             allow_gpus,
@@ -320,7 +347,7 @@ pub(crate) fn run() {
         ),
         Commands::Cancel { id, force } => cancel::run(id, force),
         Commands::Delete { id, all, status } => delete::run(id, all, status),
-        Commands::Status => status::run(),
+        Commands::Status { quiet } => status::run(quiet),
         Commands::List {
             all,
             limit,
@@ -370,9 +397,19 @@ mod tests {
 
     #[test]
     fn configurable_arguments_preserve_explicit_values() {
-        let cli = Cli::try_parse_from(["cgm", "start", "--interval", "5", "--scheduler", "fifo"])
-            .unwrap();
+        let cli = Cli::try_parse_from([
+            "cgm",
+            "start",
+            "--system",
+            "--interval",
+            "5",
+            "--scheduler",
+            "fifo",
+        ])
+        .unwrap();
         let Commands::Start {
+            user,
+            system,
             force,
             gpus,
             interval,
@@ -382,11 +419,27 @@ mod tests {
         else {
             panic!("expected start command");
         };
+        assert_eq!(user, false);
+        assert_eq!(system, true);
         assert_eq!(force, false);
         assert!(gpus.is_none());
         assert_eq!(interval, Some(5));
         assert_eq!(scheduler, Some(crate::types::SchedulerKind::Fifo));
         assert!(threshold.is_none());
+    }
+
+    #[test]
+    fn start_requires_exactly_one_mode() {
+        assert!(Cli::try_parse_from(["cgm", "start"]).is_err());
+        assert!(Cli::try_parse_from(["cgm", "start", "--user", "--system"]).is_err());
+        assert!(Cli::try_parse_from(["cgm", "start", "--user"]).is_ok());
+        assert!(Cli::try_parse_from(["cgm", "start", "--system"]).is_ok());
+    }
+
+    #[test]
+    fn status_parses_quiet() {
+        let cli = Cli::try_parse_from(["cgm", "status", "--quiet"]).unwrap();
+        assert!(matches!(cli.command, Commands::Status { quiet: true }));
     }
 
     #[test]

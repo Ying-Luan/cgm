@@ -18,7 +18,7 @@ use toml_edit::{DocumentMut, Item, table, value};
 use crate::types::{Config, ConfigScope, EffectiveConfig, Source};
 
 use super::{
-    load::{load_effective, parse_config, read_config},
+    load::{load_scope_effective, parse_config, read_config},
     path::config_path,
 };
 
@@ -162,7 +162,7 @@ impl ConfigKey {
         }
     }
 
-    /// Get this key's value from a raw configuration layer.
+    /// Get this key's value from a raw configuration file.
     ///
     /// # Arguments
     ///
@@ -185,18 +185,6 @@ impl ConfigKey {
                 config.submit.as_ref()?.required_gpus.map(|v| v.to_string())
             }
         }
-    }
-
-    /// Determine whether this key is allowed in a user configuration.
-    ///
-    /// # Returns
-    ///
-    /// Whether the key is allowed in a user configuration.
-    fn user_allowed(&self) -> bool {
-        !matches!(
-            self,
-            Self::StartGpus | Self::StartInterval | Self::StartScheduler | Self::StartThreshold
-        )
     }
 }
 
@@ -240,13 +228,7 @@ pub(crate) fn init(force: bool, scope: ConfigScope) -> Result<PathBuf, String> {
 
     let content = toml_edit::ser::to_string_pretty(&Config::from(&EffectiveConfig::default()))
         .map_err(|error| format!("Failed to generate default config: {}", error))?;
-    let mut document = content
-        .parse::<DocumentMut>()
-        .map_err(|error| format!("Failed to parse generated default config: {}", error))?;
-    if scope == ConfigScope::User {
-        document.remove("start");
-    }
-    write_config(&document.to_string(), &path, scope)?;
+    write_config(&content, &path)?;
 
     Ok(path)
 }
@@ -265,8 +247,7 @@ pub(crate) fn init(force: bool, scope: ConfigScope) -> Result<PathBuf, String> {
 pub(crate) fn set(key: &str, raw_value: &str, scope: ConfigScope) -> Result<PathBuf, String> {
     let key = ConfigKey::from_str(key)?;
     let path = config_path(scope)?;
-    require_key_scope(&key, scope)?;
-    set_at(&key, &path, raw_value, scope)?;
+    set_at(&key, &path, raw_value)?;
 
     Ok(path)
 }
@@ -284,8 +265,7 @@ pub(crate) fn set(key: &str, raw_value: &str, scope: ConfigScope) -> Result<Path
 pub(crate) fn unset(key: &str, scope: ConfigScope) -> Result<(PathBuf, bool), String> {
     let key = ConfigKey::from_str(key)?;
     let path = config_path(scope)?;
-    require_key_scope(&key, scope)?;
-    let removed = unset_at(&key, &path, scope)?;
+    let removed = unset_at(&key, &path)?;
 
     Ok((path, removed))
 }
@@ -311,7 +291,7 @@ pub(crate) fn get(
     let key = ConfigKey::from_str(key)?;
 
     if !effective {
-        let raw = read_config(&config_path(scope)?, scope)?;
+        let raw = read_config(&config_path(scope)?)?;
         if let Some(raw) = raw
             && let Some(value) = key.raw_value(&raw)
         {
@@ -323,7 +303,8 @@ pub(crate) fn get(
         return Ok(String::new());
     }
 
-    let (mut value, src) = key.get(&load_effective()?);
+    let config = load_scope_effective(scope)?;
+    let (mut value, src) = key.get(&config);
     if source {
         value.push_str(&format!(" # {}", src));
     }
@@ -347,9 +328,13 @@ pub(crate) fn show(
     scope: ConfigScope,
     source: bool,
 ) -> Result<Option<Table>, String> {
-    let config = load_effective()?;
+    let config = if effective {
+        load_scope_effective(scope)?
+    } else {
+        EffectiveConfig::default()
+    };
     let raw = if !effective {
-        read_config(&config_path(scope)?, scope)?
+        read_config(&config_path(scope)?)?
     } else {
         None
     };
@@ -406,7 +391,7 @@ pub(crate) fn validate_current(scope: ConfigScope) -> Result<PathBuf, String> {
     let path = config_path(scope)?;
     let content = fs::read_to_string(&path)
         .map_err(|error| format!("Failed to read config {}: {}", path.display(), error))?;
-    parse_config(&content, &path, scope)?;
+    parse_config(&content, &path)?;
 
     Ok(path)
 }
@@ -418,12 +403,11 @@ pub(crate) fn validate_current(scope: ConfigScope) -> Result<PathBuf, String> {
 /// * `key` - The configuration key to set.
 /// * `path` - The path to the configuration file.
 /// * `raw_value` - The raw string value to set.
-/// * `scope` - The scope of the configuration (global or user), used for validation.
 ///
 /// # Returns
 ///
 /// Whether the operation was successful or not.
-fn set_at(key: &ConfigKey, path: &Path, raw_value: &str, scope: ConfigScope) -> Result<(), String> {
+fn set_at(key: &ConfigKey, path: &Path, raw_value: &str) -> Result<(), String> {
     let content = match fs::read_to_string(path) {
         Ok(content) => content,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
@@ -441,8 +425,8 @@ fn set_at(key: &ConfigKey, path: &Path, raw_value: &str, scope: ConfigScope) -> 
     key.set(&mut document, raw_value)?;
 
     let content = document.to_string();
-    parse_config(&content, path, scope)?;
-    write_config(&content, path, scope)?;
+    parse_config(&content, path)?;
+    write_config(&content, path)?;
 
     Ok(())
 }
@@ -453,12 +437,11 @@ fn set_at(key: &ConfigKey, path: &Path, raw_value: &str, scope: ConfigScope) -> 
 ///
 /// * `key` - The configuration key to remove.
 /// * `path` - The path to the configuration file.
-/// * `scope` - The scope of the configuration (global or user), used for validation.
 ///
 /// # Returns
 ///
 /// Whether the operation was successful or not.
-fn unset_at(key: &ConfigKey, path: &Path, scope: ConfigScope) -> Result<bool, String> {
+fn unset_at(key: &ConfigKey, path: &Path) -> Result<bool, String> {
     let content = match fs::read_to_string(path) {
         Ok(content) => content,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
@@ -495,43 +478,24 @@ fn unset_at(key: &ConfigKey, path: &Path, scope: ConfigScope) -> Result<bool, St
 
     if removed {
         let content = document.to_string();
-        parse_config(&content, path, scope)?;
-        write_config(&content, path, scope)?;
+        parse_config(&content, path)?;
+        write_config(&content, path)?;
     }
 
     Ok(removed)
 }
 
-/// Reject keys that cannot be written in the selected scope.
-///
-/// # Arguments
-///
-/// * `key` - The configuration key to check.
-/// * `scope` - The scope of the configuration (global or user).
-///
-/// # Returns
-///
-/// Whether the key is allowed in the selected scope or not.
-fn require_key_scope(key: &ConfigKey, scope: ConfigScope) -> Result<(), String> {
-    if scope == ConfigScope::User && !key.user_allowed() {
-        Err("start settings are only allowed in the global config".to_string())
-    } else {
-        Ok(())
-    }
-}
-
-/// Atomically replace a configuration file with the requested permissions.
+/// Atomically replace a configuration file with private permissions.
 ///
 /// # Arguments
 ///
 /// * `content` - The content to write to the config file.
 /// * `path` - The path to the configuration file.
-/// * `scope` - The scope of the configuration (global or user), used for setting permissions.
 ///
 /// # Returns
 ///
 /// Whether the write was successful or not
-fn write_config(content: &str, path: &Path, scope: ConfigScope) -> Result<(), String> {
+fn write_config(content: &str, path: &Path) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("Config path has no parent: {}", path.display()))?;
@@ -542,11 +506,7 @@ fn write_config(content: &str, path: &Path, scope: ConfigScope) -> Result<(), St
             error
         )
     })?;
-    let (directory_mode, file_mode) = match scope {
-        ConfigScope::Global => (0o755, 0o644),
-        ConfigScope::User => (0o700, 0o600),
-    };
-    fs::set_permissions(parent, fs::Permissions::from_mode(directory_mode)).map_err(|error| {
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).map_err(|error| {
         format!(
             "Failed to set config directory permissions {}: {}",
             parent.display(),
@@ -558,7 +518,7 @@ fn write_config(content: &str, path: &Path, scope: ConfigScope) -> Result<(), St
     let result = (|| {
         let mut file = OpenOptions::new()
             .create_new(true)
-            .mode(file_mode)
+            .mode(0o600)
             .write(true)
             .open(&temporary_path)
             .map_err(|error| {
@@ -584,7 +544,7 @@ fn write_config(content: &str, path: &Path, scope: ConfigScope) -> Result<(), St
         })?;
         fs::rename(&temporary_path, path)
             .map_err(|error| format!("Failed to replace config {}: {}", path.display(), error))?;
-        fs::set_permissions(path, fs::Permissions::from_mode(file_mode)).map_err(|error| {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(|error| {
             format!(
                 "Failed to set config permissions {}: {}",
                 path.display(),
@@ -603,8 +563,7 @@ fn write_config(content: &str, path: &Path, scope: ConfigScope) -> Result<(), St
 mod tests {
     use std::{fs, path::PathBuf, process, str::FromStr, time::SystemTime};
 
-    use super::{ConfigKey, ConfigScope, set_at, unset_at};
-    use crate::config::load::load_effective_from;
+    use super::{ConfigKey, set_at, unset_at};
 
     /// Create an isolated temporary directory without an additional dependency.
     fn temp_dir(name: &str) -> PathBuf {
@@ -631,7 +590,6 @@ mod tests {
             &ConfigKey::from_str("submit.required_gpus").unwrap(),
             &path,
             "2",
-            ConfigScope::Global,
         )
         .unwrap();
         let content = fs::read_to_string(&path).unwrap();
@@ -648,7 +606,7 @@ mod tests {
         fs::write(&path, "[submit]\nrequired_gpus = \"invalid\"\n").unwrap();
 
         let key = ConfigKey::from_str("submit.required_gpus").unwrap();
-        set_at(&key, &path, "2", ConfigScope::User).unwrap();
+        set_at(&key, &path, "2").unwrap();
         assert!(
             fs::read_to_string(&path)
                 .unwrap()
@@ -656,7 +614,7 @@ mod tests {
         );
 
         fs::write(&path, "[submit]\nrequired_gpus = \"invalid\"\n").unwrap();
-        assert!(unset_at(&key, &path, ConfigScope::User).unwrap());
+        assert!(unset_at(&key, &path).unwrap());
         assert!(!fs::read_to_string(&path).unwrap().contains("submit"));
         fs::remove_dir_all(dir).unwrap();
     }
@@ -669,12 +627,12 @@ mod tests {
         fs::write(&path, "submit = 1\n").unwrap();
 
         assert!(
-            set_at(&key, &path, "2", ConfigScope::User)
+            set_at(&key, &path, "2")
                 .unwrap_err()
                 .contains("submit must be a table")
         );
         assert!(
-            unset_at(&key, &path, ConfigScope::User)
+            unset_at(&key, &path)
                 .unwrap_err()
                 .contains("submit must be a table")
         );
@@ -689,7 +647,6 @@ mod tests {
             &ConfigKey::from_str("submit.detach").unwrap(),
             &path,
             "true",
-            ConfigScope::User,
         )
         .unwrap();
 
@@ -701,23 +658,14 @@ mod tests {
     }
 
     #[test]
-    fn unset_falls_back_to_global_value() {
+    fn unset_removes_value_and_empty_section() {
         let dir = temp_dir("unset");
-        let global = dir.join("global.toml");
-        let user = dir.join("user.toml");
-        fs::write(&global, "[submit]\ndetach = true\n").unwrap();
-        fs::write(&user, "submit = { detach = false }\n").unwrap();
+        let path = dir.join("config.toml");
+        fs::write(&path, "submit = { detach = false }\n").unwrap();
 
-        let removed = unset_at(
-            &ConfigKey::from_str("submit.detach").unwrap(),
-            &user,
-            ConfigScope::User,
-        )
-        .unwrap();
+        let removed = unset_at(&ConfigKey::from_str("submit.detach").unwrap(), &path).unwrap();
         assert!(removed);
-        let config = load_effective_from(&global, Some(&user)).unwrap();
-        assert!(config.submit.detach.value);
-        assert!(!fs::read_to_string(&user).unwrap().contains("submit"));
+        assert!(!fs::read_to_string(&path).unwrap().contains("submit"));
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -727,7 +675,6 @@ mod tests {
         let removed = unset_at(
             &ConfigKey::from_str("submit.detach").unwrap(),
             &dir.join("config.toml"),
-            ConfigScope::User,
         )
         .unwrap();
         assert!(!removed);

@@ -71,7 +71,7 @@ pub(crate) enum Source {
     /// Built-in default.
     BuiltIn,
     /// System-wide configuration file.
-    Global,
+    System,
     /// Current user's configuration file.
     User,
 }
@@ -80,7 +80,7 @@ impl fmt::Display for Source {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::BuiltIn => write!(f, "built-in"),
-            Self::Global => write!(f, "global"),
+            Self::System => write!(f, "system"),
             Self::User => write!(f, "user"),
         }
     }
@@ -89,7 +89,7 @@ impl fmt::Display for Source {
 impl From<ConfigScope> for Source {
     fn from(scope: ConfigScope) -> Self {
         match scope {
-            ConfigScope::Global => Self::Global,
+            ConfigScope::System => Self::System,
             ConfigScope::User => Self::User,
         }
     }
@@ -310,16 +310,16 @@ impl Default for EffectiveConfig {
 }
 
 /// Configuration file scope.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum ConfigScope {
     /// System-wide configuration.
-    Global,
+    System,
     /// Current user's configuration.
     User,
 }
 
 impl From<bool> for ConfigScope {
-    fn from(global: bool) -> Self {
-        if global { Self::Global } else { Self::User }
+    fn from(system: bool) -> Self {
+        if system { Self::System } else { Self::User }
     }
 }

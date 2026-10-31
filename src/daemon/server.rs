@@ -5,24 +5,27 @@
 use std::{
     fs::{self, File},
     io::Read,
-    os::unix::{
-        fs::PermissionsExt,
-        net::{UnixListener, UnixStream},
-    },
+    os::unix::net::{UnixListener, UnixStream},
     path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc::Sender,
+    },
+    time::Duration,
 };
 
-use nix::unistd::User;
+use nix::unistd::{Uid, User};
 
 use crate::{
-    constants::SOCKET_PATH,
-    daemon::process::kill_process,
+    daemon::control::{self, Event},
     db::DbPool,
     hardware::GpuPool,
     macros::{green, red},
+    runtime::{Runtime, authorize, peer_uid, socket},
     types::{
-        DeleteTarget, GpuSelection, Job, JobInfo, JobPrintInfo, JobRequest, JobStatus, Request,
-        RerunContext, Response,
+        DaemonMode, DaemonState, DeleteTarget, GpuSelection, Job, JobInfo, JobPrintInfo,
+        JobRequest, JobStatus, Request, RerunContext, Response,
     },
 };
 
@@ -35,6 +38,16 @@ pub(crate) struct Server {
     queue: DbPool,
     /// GPU pool for resource allocation tracking
     gpu_pool: GpuPool,
+    /// Startup-selected identity and paths for status metadata.
+    runtime: Runtime,
+    /// Pre-bound abstract socket served until shutdown completes.
+    listener: UnixListener,
+    /// Internal task control channel.
+    sender: Sender<Event>,
+    /// Whether the executor is stopping.
+    stopping: Arc<AtomicBool>,
+    /// Whether the executor has stopped.
+    stopped: Arc<AtomicBool>,
 }
 
 impl Server {
@@ -44,37 +57,56 @@ impl Server {
     ///
     /// * `queue` - Database connection pool for job CRUD operations
     /// * `gpu_pool` - GPU pool for tracking GPU allocation state
+    /// * `runtime` - Startup-selected mode, identity, and paths.
+    /// * `listener` - The unique abstract socket held until shutdown completes.
+    /// * `sender` - Task executor channel used for cancellation and shutdown.
+    /// * `stopping` - Whether the executor is stopping.
+    /// * `stopped` - Whether the executor has stopped.
     ///
     /// # Returns
     ///
     /// A new Server instance ready to run and handle requests
-    pub(crate) fn new(queue: DbPool, gpu_pool: GpuPool) -> Self {
-        Self { queue, gpu_pool }
+    pub(super) fn new(
+        queue: DbPool,
+        gpu_pool: GpuPool,
+        runtime: Runtime,
+        listener: UnixListener,
+        sender: Sender<Event>,
+        stopping: Arc<AtomicBool>,
+        stopped: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            queue,
+            gpu_pool,
+            runtime,
+            listener,
+            sender,
+            stopping,
+            stopped,
+        }
     }
 
-    /// Start the server and listen for incoming connections
+    /// Serve the pre-bound listener until the executor finishes shutdown.
     ///
-    /// Creates Unix Domain Socket at SOCKET_PATH, removes stale socket file
-    /// if exists. Enter main event loop accepting client connections.
-    pub(crate) fn run(&self) {
-        // Ensure old socket file is removed
-        let socket_path = Path::new(SOCKET_PATH);
-        if socket_path.exists() {
-            fs::remove_file(socket_path).unwrap();
-        }
-
-        // Bind Unix Domain Socket
-        let listener = UnixListener::bind(socket_path).unwrap();
-        fs::set_permissions(socket_path, PermissionsExt::from_mode(0o666)).ok();
-        println!("{}", green!("Daemon listening on {}", SOCKET_PATH));
-
-        // Loop accepting client connections
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => self.handle_connection(stream),
-                Err(err) => eprintln!("{}", red!("{}", err)),
+    /// # Returns
+    ///
+    /// Success after shutdown, or a listener configuration error.
+    pub(super) fn run(&self) -> Result<(), String> {
+        self.listener
+            .set_nonblocking(true)
+            .map_err(|error| error.to_string())?;
+        println!("{}", green!("Daemon listening on abstract socket"));
+        while !self.stopped.load(Ordering::SeqCst) {
+            match self.listener.accept() {
+                Ok((stream, _)) => self.handle_connection(stream),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(error) => eprintln!("{}", red!("{}", error)),
             }
         }
+
+        Ok(())
     }
 
     /// Process a single client connection
@@ -85,10 +117,25 @@ impl Server {
     ///
     /// * `stream` - Unix stream connected to client
     fn handle_connection(&self, mut stream: UnixStream) {
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+        let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
+        let peer = match peer_uid(&stream) {
+            Ok(uid) => uid,
+            Err(error) => {
+                let _ = serde_json::to_writer(
+                    &stream,
+                    &Response::Error {
+                        message: format!("Failed to obtain peer credentials: {}", error),
+                    },
+                );
+                return;
+            }
+        };
+
         // Read client request
         let mut buffer = String::new();
-        if let Err(e) = stream.read_to_string(&mut buffer) {
-            eprintln!("{}", red!("Failed to read request: {}", e));
+        if let Err(error) = stream.read_to_string(&mut buffer) {
+            eprintln!("{}", red!("Failed to read request: {}", error));
             return;
         }
 
@@ -96,16 +143,29 @@ impl Server {
         let response = match serde_json::from_str::<Request>(&buffer) {
             Ok(req) => {
                 println!("{}", green!("Received request: {:?}", req));
-                self.dispatch(req)
+                match authorize(req, peer, Uid::effective()) {
+                    Ok((req, username)) => {
+                        let foreign_status = matches!(req, Request::Status)
+                            && !Uid::effective().is_root()
+                            && peer != Uid::effective()
+                            && !peer.is_root();
+                        let mut response = self.dispatch(req, &username);
+                        if foreign_status && let Response::Status { gpus, .. } = &mut response {
+                            gpus.clear();
+                        }
+                        response
+                    }
+                    Err(message) => Response::Error { message },
+                }
             }
-            Err(e) => Response::Error {
-                message: format!("Failed to parse request: {}", e),
+            Err(error) => Response::Error {
+                message: format!("Failed to parse request: {}", error),
             },
         };
 
         // Write response back to client
-        if let Err(e) = serde_json::to_writer(&stream, &response) {
-            eprintln!("{}", red!("Failed to write response: {}", e));
+        if let Err(error) = serde_json::to_writer(&stream, &response) {
+            eprintln!("{}", red!("Failed to write response: {}", error));
         }
     }
 
@@ -118,9 +178,16 @@ impl Server {
     /// # Returns
     ///
     /// Response generated by the corresponding handler function
-    fn dispatch(&self, req: Request) -> Response {
+    fn dispatch(&self, req: Request, username: &str) -> Response {
+        if self.stopping.load(Ordering::SeqCst)
+            && matches!(req, Request::Submit { .. } | Request::Rerun { .. })
+        {
+            return Response::Error {
+                message: "Daemon is stopping; new jobs are not accepted".into(),
+            };
+        }
         match req {
-            Request::StopCheck => self.handle_stop_check(),
+            Request::Stop { force } => self.handle_stop(force),
             Request::Submit { job } => self.handle_submit(job),
             Request::Rerun {
                 id,
@@ -129,7 +196,7 @@ impl Server {
                 dependencies,
                 required_gpus,
                 log_path,
-                username,
+                username: _,
             } => self.handle_rerun(
                 id,
                 context,
@@ -137,36 +204,34 @@ impl Server {
                 dependencies,
                 required_gpus,
                 log_path,
-                &username,
+                username,
             ),
             Request::Cancel {
                 id,
-                username,
+                username: _,
                 force,
-            } => self.handle_cancel(id, &username, force),
+            } => self.handle_cancel(id, username, force),
             Request::Delete { target } => self.handle_delete(target),
             Request::Status => self.handle_status(),
-            Request::List { username, limit } => self.handle_list(&username, limit),
-            Request::Info { id, username } => self.handle_info(id, &username),
-            Request::Log { id, username } => self.handle_log(id, &username),
+            Request::List { limit, .. } => self.handle_list(username, limit),
+            Request::Info { id, .. } => self.handle_info(id, username),
+            Request::Log { id, .. } => self.handle_log(id, username),
         }
     }
 
-    /// Handle stop check request
+    /// Ask the executor to stop.
+    ///
+    /// # Arguments
+    ///
+    /// * `force` - Terminate running tasks and wait for cleanup before stopping.
     ///
     /// # Returns
     ///
-    /// Count of currently running jobs to determine if safe to stop.
-    fn handle_stop_check(&self) -> Response {
-        let running = self
-            .queue
-            .lock()
-            .unwrap()
-            .get_jobs_by_status(JobStatus::Running)
-            .unwrap_or_default();
-
-        Response::StopCheck {
-            running_count: running.len(),
+    /// A stop acknowledgement only after task finalization, or a refusal/error.
+    fn handle_stop(&self, force: bool) -> Response {
+        match control::stop(&self.sender, &self.stopped, force) {
+            Ok(()) => Response::Stop,
+            Err(message) => Response::Error { message },
         }
     }
 
@@ -253,9 +318,17 @@ impl Server {
     ///
     /// Persisted job details, or an error message on failure.
     fn create_job(&self, req: JobRequest) -> Result<JobInfo, String> {
+        if matches!(self.runtime.mode, DaemonMode::User) && req.username != self.runtime.owner_name
+        {
+            return Err("Job user does not match daemon owner".to_string());
+        }
         let q = self.queue.lock().unwrap();
         let dependencies = req.dependencies.clone();
-        let mut job = Job::from_request(q.get_max_id().unwrap_or(0) + 1, req);
+        let mut job = Job::from_request(
+            q.get_max_id().unwrap_or(0) + 1,
+            req,
+            &self.runtime.paths.job_logs,
+        );
 
         if let Some(allowed_gpus) = job.allowed_gpus.ids()
             && (!self.gpu_pool.lock().unwrap().manages_gpu_ids(allowed_gpus)
@@ -292,24 +365,23 @@ impl Server {
     ///
     /// `Ok(())` if log file is prepared successfully, `Err` with error message on failure
     fn prepare_log_file(&self, log_file: &str, username: &str) -> Result<(), String> {
+        let user = User::from_name(username)
+            .map_err(|error| format!("Failed to query user '{}': {}", username, error))?
+            .ok_or_else(|| format!("User not found: {}", username))?;
         let log = Path::new(log_file);
         let parent = log
             .parent()
             .ok_or_else(|| format!("Invalid log path: {}", log_file))?;
 
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create log dir: {}", e))?;
-        File::options()
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create log dir: {}", error))?;
+        let file = File::options()
             .create(true)
             .append(true)
             .open(log)
-            .map_err(|e| format!("Failed to prepare log file: {}", e))?;
-
-        let user = User::from_name(username)
-            .map_err(|e| format!("Failed to query user '{}': {}", username, e))?
-            .ok_or_else(|| format!("User not found: {}", username))?;
-
-        nix::unistd::chown(log, Some(user.uid), Some(user.gid))
-            .map_err(|e| format!("Failed to chown log file '{}': {}", log_file, e))?;
+            .map_err(|error| format!("Failed to prepare log file: {}", error))?;
+        nix::unistd::fchown(&file, Some(user.uid), Some(user.gid))
+            .map_err(|error| error.to_string())?;
 
         Ok(())
     }
@@ -345,7 +417,7 @@ impl Server {
                         },
                     }
                 }
-                JobStatus::Running if force => match self.force_cancel_running(id) {
+                JobStatus::Running if force => match control::cancel(&self.sender, id, username) {
                     Ok(()) => Response::Cancel,
                     Err(message) => Response::Error { message },
                 },
@@ -358,48 +430,6 @@ impl Server {
             },
             Err(message) => Response::Error { message },
         }
-    }
-
-    /// Force terminate a running job process
-    ///
-    /// Sends SIGTERM to process, releases allocated GPUs, updates job status.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - Job ID to terminate
-    ///
-    /// # Returns
-    ///
-    /// Success or error message on failure
-    fn force_cancel_running(&self, id: usize) -> Result<(), String> {
-        let pid = self.gpu_pool.lock().unwrap().get_first_pid_by_job_id(id);
-        if let Some(pid) = pid
-            && let Err(e) = kill_process(pid)
-        {
-            eprintln!("{}", red!("Failed to kill process: {}", e));
-            return Err("Failed to kill process".to_string());
-        }
-
-        self.queue
-            .lock()
-            .unwrap()
-            .update_status(id, JobStatus::Cancelled, None)
-            .map_err(|error| error.to_string())?;
-        let gpus_to_release = self
-            .gpu_pool
-            .lock()
-            .unwrap()
-            .get_all_status()
-            .iter()
-            .filter(|g| g.job_id == Some(id))
-            .map(|g| g.id)
-            .collect::<Vec<_>>();
-        self.gpu_pool
-            .lock()
-            .unwrap()
-            .release_batch(&gpus_to_release);
-
-        Ok(())
     }
 
     /// Handle job deletion request
@@ -541,7 +571,14 @@ impl Server {
     /// Response containing list of all GPUs with their current status
     fn handle_status(&self) -> Response {
         let gpus = self.gpu_pool.lock().unwrap().get_all_status();
-        Response::Status { gpus }
+        Response::Status {
+            gpus,
+            daemon: self.runtime.info(if self.stopping.load(Ordering::SeqCst) {
+                DaemonState::Stopping
+            } else {
+                DaemonState::Running
+            }),
+        }
     }
 
     /// Handle job list request
@@ -690,5 +727,5 @@ impl Server {
 ///
 /// True if daemon is running (socket connection successful), false otherwise.
 pub(crate) fn is_daemon_running() -> bool {
-    UnixStream::connect(SOCKET_PATH).is_ok()
+    socket::occupied()
 }

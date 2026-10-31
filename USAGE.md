@@ -34,28 +34,30 @@
 ## Start Daemon
 
 ```bash
-sudo cgm start [OPTIONS]
+cgm start [OPTIONS]
 ```
 
 | Option | Short | Default | Description | Config Key |
 | ------ | ----- | ------- | ----------- | --- |
+| `--system` | | `false` | Start the system daemon as root | |
+| `--user` | | `false` | Start a personal daemon as a non-root user | |
 | `--force` | `-f` | `false` | Force start. Recreates the database. Used when database file is corrupted | ` ` |
 | `--gpus <GPU_LIST>` | `-g <GPU_LIST>` | `all` | GPUs to manage, comma-separated (e.g., "0,1,2,3") or "all" for all GPUs | `start.gpus` |
 | `--interval <N>` | `-i <N>` | `10` | Scheduling interval in seconds | `start.interval` |
 | `--scheduler <NAME>` | `-s <NAME>` | `greedy` | Scheduler strategy. Options: greedy, fifo | `start.scheduler` |
 | `--threshold <N>` | `-t <N>` | `10` | GPU memory usage threshold (%). GPUs exceeding this are considered externally occupied | `start.threshold` |
 
-`start.*` keys are writable only by root.
-
 ## Stop Daemon
 
 ```bash
-sudo cgm stop [OPTIONS]
+cgm stop [OPTIONS]
 ```
 
 | Option | Short | Default | Description | Config Key |
 | ------ | ----- | ------- | ----------- | --- |
-| `--force` | `-f` | `false` | Force stop. Shuts down immediately even if jobs are running | ` ` |
+| `--force` | `-f` | `false` | Terminate registered active jobs and wait for finalization | ` ` |
+
+Only the daemon owner or root may stop the daemon.
 
 ## Submit Job
 
@@ -127,7 +129,7 @@ cgm cancel <JOB_ID> [OPTIONS]
 ## Delete Job
 
 ```bash
-sudo cgm delete [JOB_ID] [OPTIONS]
+cgm delete [JOB_ID] [OPTIONS]
 ```
 
 | Option | Short | Default | Description | Config Key |
@@ -145,6 +147,7 @@ cgm status [OPTIONS]
 
 | Option | Short | Default | Description | Config Key |
 | ------ | ----- | ------- | ----------- | --- |
+| `--quiet` | | `false` | Exit code 0 when cgm is running, 1 when not running, 2 on check error | |
 
 ## View Job List
 
@@ -154,11 +157,11 @@ cgm list [OPTIONS]
 
 | Option | Short | Default | Description | Config Key |
 | ------ | ----- | ------- | ----------- | --- |
-| `--all` | `-a` | `false` | Show all jobs without limit | ` ` |
+| `--all` | `-a` | `false` | Show all jobs | ` ` |
 | `--limit <N>` | ` ` | `20` | Show the latest N jobs | `list.limit` |
-| `--long-format` | `-l` | `false` | Show detailed field names and full commands | ` ` |
+| `--long-format` | `-l` | `false` | Show complete field names and complete commands | ` ` |
 
-`--all` and `--limit` are mutually exclusive. Only one can be specified.
+`--all` and `--limit` are mutually exclusive; only one can be specified.
 
 ## View Job Info
 
@@ -197,7 +200,7 @@ cgm config init [OPTIONS]
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
 | `--force` | `-f` | `false` | Overwrite an existing configuration file |
-| `--global` | ` ` | `false` | Target the system-wide configuration |
+| `--system` | ` ` | `false` | Target the system configuration (root only) |
 
 ### Set Configuration Value
 
@@ -207,7 +210,7 @@ cgm config set <KEY> <VALUE> [OPTIONS]
 
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
-| `--global` | ` ` | `false` | Target the system-wide configuration |
+| `--system` | ` ` | `false` | Target the system configuration (root only) |
 
 `set` creates the minimal required configuration even without running `init` first.
 
@@ -219,7 +222,7 @@ cgm config unset <KEY> [OPTIONS]
 
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
-| `--global` | ` ` | `false` | Target the system-wide configuration |
+| `--system` | ` ` | `false` | Target the system configuration (root only) |
 
 ### Get Configuration Value
 
@@ -230,10 +233,8 @@ cgm config get <KEY> [OPTIONS]
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
 | `--effective` | `-e` | `false` | Show the merged effective value |
-| `--global` | ` ` | `false` | View the global configuration layer |
+| `--system` | ` ` | `false` | View the system configuration (root only) |
 | `--source` | `-s` | `false` | Show the source of the value |
-
-Without flags, shows the user configuration layer value.
 
 ### Show Configuration
 
@@ -244,7 +245,7 @@ cgm config show [OPTIONS]
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
 | `--effective` | `-e` | `false` | Show the merged effective configuration |
-| `--global` | ` ` | `false` | View the global configuration layer |
+| `--system` | ` ` | `false` | View the system configuration (root only) |
 | `--source` | `-s` | `false` | Show the source of each value |
 
 Displays all configuration values in a table.
@@ -257,7 +258,7 @@ cgm config validate [OPTIONS]
 
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
-| `--global` | ` ` | `false` | Target the system-wide configuration |
+| `--system` | ` ` | `false` | Target the system configuration (root only) |
 
 ### Show Configuration Path
 
@@ -267,8 +268,8 @@ cgm config path [OPTIONS]
 
 | Option | Short | Default | Description |
 | ------ | ----- | ------- | ----------- |
-| `--global` | ` ` | `false` | Target the system-wide configuration |
+| `--system` | ` ` | `false` | Target the system configuration (root only) |
 
 ### Precedence
 
-Runtime precedence is: explicit CLI option > user config > global config > built-in default.
+Runtime precedence is: explicit command-line option > the selected configuration file > built-in default.

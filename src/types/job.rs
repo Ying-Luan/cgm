@@ -2,12 +2,12 @@
 //!
 //! Defines job struct, status enum, request and print info structures.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use comfy_table::Color;
 use serde::{Deserialize, Serialize};
 
-use crate::constants::JOB_LOG_FOLDER;
+use crate::constants::{JOB_LOG_FILE_PREFIX, JOB_LOG_FILE_SUFFIX};
 
 use super::gpu::GpuSelection;
 
@@ -44,14 +44,36 @@ pub(crate) struct Job {
 impl Job {
     /// Create job from request
     ///
+    /// Resolve custom relative logs against the saved working directory.
+    ///
     /// # Arguments
     ///
     /// * `id` - Job ID
     /// * `req` - Job request
-    pub(crate) fn from_request(id: usize, req: JobRequest) -> Self {
+    /// * `log_dir` - Selected daemon's default task log directory.
+    ///
+    /// # Returns
+    ///
+    /// A pending job with no GPU allocation and a resolved log path.
+    pub(crate) fn from_request(id: usize, req: JobRequest, log_dir: &Path) -> Self {
         let log_path = req
             .log_path
-            .unwrap_or_else(|| format!("{}/job-{}.log", JOB_LOG_FOLDER, id));
+            .map(|path| {
+                if Path::new(&path).is_absolute() {
+                    path
+                } else {
+                    Path::new(&req.cwd)
+                        .join(path)
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            })
+            .unwrap_or_else(|| {
+                log_dir
+                    .join(format!("{JOB_LOG_FILE_PREFIX}{id}{JOB_LOG_FILE_SUFFIX}"))
+                    .to_string_lossy()
+                    .into_owned()
+            });
         Job {
             id,
             status: JobStatus::Pending,

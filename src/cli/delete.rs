@@ -1,11 +1,10 @@
 //! Delete job subcommand
 //!
-//! Delete records of completed/failed/cancelled jobs.
+//! Request deletion of terminated jobs.
 
 use crate::{
     client::delete_job,
     macros::green,
-    os::require_root,
     types::{DeleteTarget, JobStatus},
 };
 
@@ -19,9 +18,6 @@ use super::utils::{exit_with_error, require_daemon};
 /// * `all` - Delete all terminated jobs
 /// * `status` - Delete by status (comma-separated)
 pub(super) fn run(id: Option<usize>, all: bool, status: Option<String>) {
-    // Only root user can delete jobs
-    require_root();
-
     require_daemon();
 
     // Determine delete target based on arguments

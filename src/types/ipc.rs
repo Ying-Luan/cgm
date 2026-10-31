@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use super::{
+    daemon::DaemonInfo,
     gpu::{GpuInfo, GpuSelection},
     job::{JobInfo, JobPrintInfo, JobRequest, JobStatus},
 };
@@ -35,7 +36,10 @@ pub(crate) enum DeleteTarget {
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) enum Request {
     /// Check if stop is safe request
-    StopCheck,
+    Stop {
+        /// Whether to force the stop request.
+        force: bool,
+    },
     /// Submit job request
     Submit {
         /// Job request data
@@ -101,10 +105,7 @@ pub(crate) enum Request {
 #[derive(Serialize, Deserialize)]
 pub(crate) enum Response {
     /// Stop check response
-    StopCheck {
-        /// Number of running jobs
-        running_count: usize,
-    },
+    Stop,
     /// Submit job success response
     Submit {
         /// Persisted details of the newly submitted job.
@@ -126,6 +127,8 @@ pub(crate) enum Response {
     Status {
         /// GPU info list
         gpus: Vec<GpuInfo>,
+        /// Basic daemon metadata.
+        daemon: DaemonInfo,
     },
     /// List all jobs response
     List {

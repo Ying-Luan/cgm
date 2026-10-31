@@ -1,49 +1,19 @@
 //! Stop daemon subcommand
 //!
-//! Check root permission, running jobs, then stop daemon.
+//! Request an authorized daemon shutdown.
 
-use std::process;
+use crate::{client, macros::green};
 
-use crate::{
-    client::check_stop,
-    daemon::stop_daemon,
-    macros::{green, yellow},
-    os::require_root,
-};
-
-use super::utils::{exit_with_error, require_daemon};
+use super::utils::exit_with_error;
 
 /// Stop daemon
 ///
 /// # Arguments
 ///
-/// * `force` - Force stop, ignores running jobs
+/// * `force` - Terminate running tasks and wait for cleanup before stopping.
 pub(super) fn run(force: bool) {
-    // Only root user can stop daemon
-    require_root();
-
-    require_daemon();
-
-    // If --force not specified, check for running jobs
-    if !force {
-        match check_stop() {
-            Ok(count) if count > 0 => {
-                eprintln!(
-                    "{}",
-                    yellow!(
-                        "There are {} running job(s). Use --force to stop anyway.",
-                        count
-                    )
-                );
-                process::exit(1);
-            }
-            Ok(_) => {}
-            Err(e) => exit_with_error(&format!("Failed to check running jobs: {}", e)),
-        }
-    }
-
-    match stop_daemon() {
-        Ok(pid) => println!("{}", green!("Daemon (PID {}) stopped.", pid)),
+    match client::stop(force) {
+        Ok(()) => println!("{}", green!("Daemon stopped.")),
         Err(e) => exit_with_error(&format!("Failed to stop daemon: {}", e)),
     }
 }

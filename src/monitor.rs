@@ -7,9 +7,9 @@ use time::{OffsetDateTime, UtcOffset, macros::format_description};
 
 use crate::{
     client,
-    daemon::is_daemon_running,
     hardware::get_gpu_info,
     macros::{green, yellow},
+    runtime::socket,
     types::{JobInfo, JobPrintInfo},
 };
 
@@ -95,23 +95,40 @@ fn truncate_command(mut command: String) -> String {
 
 /// Display status dashboard
 ///
-/// Prints daemon status, GPU info, GPU state (from daemon), and all job list.
-pub(crate) fn show_status() {
+/// # Returns
+///
+/// Success after displaying status, or a communication/query error.
+pub(crate) fn show_status() -> Result<(), String> {
     // Display daemon status
     println!("--- CGM Status ---");
-    println!(
-        "Daemon: {}",
-        if is_daemon_running() {
-            green!("ACTIVE")
-        } else {
-            yellow!("INACTIVE")
+    let gpus_status = match client::query_gpu_status() {
+        Ok((gpus, daemon)) => {
+            println!("Daemon: {}", green!("{}", daemon.state));
+            println!("Mode: {}", daemon.mode);
+            println!(
+                "Owner: {} (UID {})",
+                daemon.owner_name.escape_debug(),
+                daemon.owner_uid
+            );
+            println!("PID: {}", daemon.pid);
+            println!("Version: {}", daemon.version.escape_debug());
+            println!(
+                "Executable: {}",
+                daemon.executable.display().to_string().escape_debug()
+            );
+            println!(
+                "Data Directory: {}",
+                daemon.root.display().to_string().escape_debug()
+            );
+            gpus
         }
-    );
+        Err(_) if !socket::occupied() => return Err("Daemon is not running".into()),
+        Err(error) => return Err(error),
+    };
 
     // Display GPU info
     println!("\n--- GPU Info ---");
     let gpu_infos = get_gpu_info();
-    let daemon_status = client::query_gpu_status().unwrap_or_default();
 
     if gpu_infos.is_empty() {
         println!("{}", yellow!("No NVIDIA GPUs found."));
@@ -129,7 +146,7 @@ pub(crate) fn show_status() {
         ]);
 
         for gpu in gpu_infos {
-            let daemon_info = daemon_status.iter().find(|d| d.id == gpu.id);
+            let daemon_info = gpus_status.iter().find(|d| d.id == gpu.id);
             let state = daemon_info
                 .map(|d| format!("{:?}", d.state))
                 .unwrap_or_else(|| "?".to_string());
@@ -156,6 +173,8 @@ pub(crate) fn show_status() {
 
         println!("{table}");
     }
+
+    Ok(())
 }
 
 /// Display all persisted job fields in database column order, then dependencies.

@@ -92,7 +92,9 @@ pub(super) fn run(
             Some(
                 std::env::current_dir()
                     .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_default(),
+                    .unwrap_or_else(|error| {
+                        exit_with_error(&format!("Failed to read current directory: {error}"))
+                    }),
             )
         } else {
             None

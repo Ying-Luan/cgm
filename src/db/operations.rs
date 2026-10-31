@@ -117,6 +117,19 @@ impl DataBase {
         Ok(Arc::new(Mutex::new(DataBase { conn })))
     }
 
+    /// Mark jobs left running by an earlier daemon as failed.
+    ///
+    /// # Returns
+    ///
+    /// Success after all stale running records have been updated.
+    pub(crate) fn recover_running(&self) -> rusqlite::Result<()> {
+        for job in self.get_jobs_by_status(JobStatus::Running)? {
+            self.update_status(job.id, JobStatus::Failed, None)?;
+        }
+
+        Ok(())
+    }
+
     /// Insert a job and its prerequisite relationships
     ///
     /// # Arguments
@@ -743,6 +756,28 @@ mod tests {
         assert_eq!(
             db.get_job_by_id(3).unwrap().unwrap().status,
             JobStatus::Failed
+        );
+    }
+
+    #[test]
+    fn recovery_fails_running_jobs_and_blocked_descendants() {
+        let db = database();
+        insert(&db, &[], 1);
+        db.update_status(1, JobStatus::Running, Some(&[2])).unwrap();
+        insert(&db, &[1], 2);
+        insert(&db, &[2], 3);
+
+        db.recover_running().unwrap();
+        db.recover_running().unwrap();
+
+        for id in 1..=3 {
+            let job = db.get_job_by_id(id).unwrap().unwrap();
+            assert_eq!(job.status, JobStatus::Failed);
+            assert!(job.end_time.is_some());
+        }
+        assert_eq!(
+            db.get_job_by_id(1).unwrap().unwrap().allocated_gpus,
+            Some(vec![2])
         );
     }
 

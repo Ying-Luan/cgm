@@ -1,7 +1,7 @@
-//! Configuration value and scope validation.
+//! Configuration value validation.
 
 use crate::{
-    types::{Config, ConfigScope, EffectiveConfig},
+    types::{Config, EffectiveConfig},
     utils::parse_comma_separated_ids,
 };
 
@@ -31,20 +31,16 @@ pub(crate) fn validate_effective(config: &EffectiveConfig) -> Result<(), String>
     Ok(())
 }
 
-/// Validate values and fields permitted in one configuration scope.
+/// Validate values in one configuration file.
 ///
 /// # Arguments
 ///
 /// * `config` - The configuration to validate.
-/// * `scope` - The scope of the configuration (global or user).
 ///
 /// # Returns
 ///
 /// Whether the configuration is valid or not.
-pub(super) fn validate_config(config: &Config, scope: ConfigScope) -> Result<(), String> {
-    if scope == ConfigScope::User && config.start.is_some() {
-        return Err("start settings are only allowed in the global config".to_string());
-    }
+pub(super) fn validate_config(config: &Config) -> Result<(), String> {
     if config.list.as_ref().and_then(|list| list.limit) == Some(0) {
         return Err("list.limit must be greater than 0".to_string());
     }
