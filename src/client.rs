@@ -4,6 +4,8 @@
 
 use std::{io::Write, time::Duration};
 
+use nix::unistd::Uid;
+
 use crate::{
     os::get_current_username,
     runtime::{connection_uid, socket},
@@ -30,7 +32,7 @@ fn send_request(request: &Request) -> Result<Response, String> {
     // Root may manage a personal daemon with Stop.
     // All other business requests still require a trusted daemon owner.
     let mut stream = if matches!(request, Request::Status)
-        || (matches!(request, Request::Stop { .. }) && nix::unistd::Uid::effective().is_root())
+        || (matches!(request, Request::Stop { .. }) && Uid::effective().is_root())
     {
         socket::connect_status()
     } else {

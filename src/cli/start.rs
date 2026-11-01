@@ -78,11 +78,10 @@ pub(super) fn run(
         DaemonMode::System
     })
     .unwrap_or_else(|error| exit_with_error(&error));
-    let paths = &runtime.paths;
-    paths
-        // TODO:
-        .secure(user)
+    runtime
+        .secure()
         .unwrap_or_else(|error| exit_with_error(&error));
+    let paths = &runtime.paths;
 
     // If database file exists, check compatibility or delete
     if force {
@@ -247,8 +246,9 @@ fn merge_config(
 mod tests {
     use std::{fs, time::SystemTime};
 
-    use super::{force_cleanup, remove_job_logs};
     use crate::runtime::RuntimePaths;
+
+    use super::{force_cleanup, remove_job_logs};
 
     #[test]
     fn removes_job_logs_but_keeps_log_directory() {

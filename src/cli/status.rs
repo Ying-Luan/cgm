@@ -2,6 +2,8 @@
 //!
 //! Call monitor module to display GPU status.
 
+use std::process::exit;
+
 use crate::{monitor::show_status, runtime::socket};
 
 use super::utils::exit_with_error;
@@ -18,7 +20,7 @@ pub(super) fn run(quiet: bool) {
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => 0,
             Err(_) => 2,
         };
-        std::process::exit(code);
+        exit(code);
     }
     show_status().unwrap_or_else(|error| exit_with_error(&error));
 }

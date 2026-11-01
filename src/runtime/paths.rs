@@ -82,49 +82,6 @@ impl RuntimePaths {
         Ok(Self::from_root(root))
     }
 
-    /// Create and secure state directories and existing state files.
-    ///
-    /// Sets the process umask to `0077`; existing database and daemon log files
-    /// must be regular, singly linked files owned by the effective user.
-    ///
-    /// # Arguments
-    ///
-    /// * `user` - Use `0700` directories when true, otherwise `0711`.
-    ///
-    /// # Returns
-    ///
-    /// Success after securing directories and setting existing state files to `0600`.
-    pub(crate) fn secure(&self, user: bool) -> Result<(), String> {
-        secure_dir(&self.root, if user { 0o700 } else { 0o711 })?;
-        secure_dir(&self.job_logs, if user { 0o700 } else { 0o711 })?;
-        // SQLite and daemon output must remain private under a traversable system directory.
-        unsafe {
-            nix::libc::umask(0o077);
-        }
-        let sqlite = self.sqlite_files();
-        for path in sqlite
-            .iter()
-            .map(PathBuf::as_path)
-            .chain([self.stdout.as_path(), self.stderr.as_path()])
-        {
-            match fs::symlink_metadata(path) {
-                Ok(metadata)
-                    if metadata.is_file()
-                        && metadata.uid() == Uid::effective().as_raw()
-                        && metadata.nlink() == 1 =>
-                {
-                    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-                        .map_err(|e| format!("Failed to secure {}: {}", path.display(), e))?;
-                }
-                Ok(_) => return Err(format!("Unsafe state file: {}", path.display())),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(format!("Failed to inspect {}: {}", path.display(), e)),
-            }
-        }
-
-        Ok(())
-    }
-
     /// Derive the database file and its SQLite WAL/shared-memory companions.
     ///
     /// # Returns
@@ -150,7 +107,7 @@ impl RuntimePaths {
 /// # Returns
 ///
 /// Success after the directory is checked and its permissions are set.
-fn secure_dir(path: &Path, mode: u32) -> Result<(), String> {
+pub(super) fn secure_dir(path: &Path, mode: u32) -> Result<(), String> {
     fs::create_dir_all(path)
         .map_err(|error| format!("Failed to create {}: {}", path.display(), error))?;
     let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;

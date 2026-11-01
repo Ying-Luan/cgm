@@ -87,8 +87,9 @@ pub(crate) fn authorize(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::types::{DeleteTarget, GpuSelection, JobRequest};
+
+    use super::*;
 
     #[test]
     fn basic_status_does_not_require_a_caller_account() {

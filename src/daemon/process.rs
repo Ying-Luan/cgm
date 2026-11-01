@@ -10,6 +10,7 @@ use std::{
         net::{UnixListener, UnixStream},
     },
     path::Path,
+    process::exit,
     sync::{Arc, atomic::AtomicBool, mpsc},
     thread,
     time::Duration,
@@ -120,10 +121,10 @@ pub(crate) fn start_daemon(
             drop(parent);
             if let Err(error) = result {
                 let _ = writeln!(child, "ERROR {error}");
-                std::process::exit(1);
+                exit(1);
             }
             if writeln!(child, "{}", std::process::id()).is_err() {
-                std::process::exit(1);
+                exit(1);
             }
             let initialized = std::panic::catch_unwind(|| {
                 let db = DataBase::open(&paths.db).map_err(|error| error.to_string())?;
@@ -139,11 +140,11 @@ pub(crate) fn start_daemon(
                 Ok(Ok(value)) => value,
                 Ok(Err(error)) => {
                     let _ = writeln!(child, "ERROR {error}");
-                    std::process::exit(1);
+                    exit(1);
                 }
                 Err(_) => {
                     let _ = writeln!(child, "ERROR initialization panicked");
-                    std::process::exit(1);
+                    exit(1);
                 }
             };
             let scheduler_kind = format!("{:?}", scheduler);
@@ -152,7 +153,7 @@ pub(crate) fn start_daemon(
             signals.add(Signal::SIGINT);
             if let Err(error) = signals.thread_block() {
                 let _ = writeln!(child, "ERROR Failed to block shutdown signals: {error}");
-                std::process::exit(1);
+                exit(1);
             }
             let (sender, events) = mpsc::channel();
             let stopping = Arc::new(AtomicBool::new(false));
@@ -190,11 +191,11 @@ pub(crate) fn start_daemon(
                     Ok(executor) => executor,
                     Err(error) => {
                         let _ = writeln!(child, "ERROR Failed to start executor: {error}");
-                        std::process::exit(1);
+                        exit(1);
                     }
                 };
             if writeln!(child, "READY").is_err() {
-                std::process::exit(1);
+                exit(1);
             }
             let _ = child.set_read_timeout(Some(Duration::from_secs(30)));
             let mut acknowledgement = String::new();
@@ -203,11 +204,11 @@ pub(crate) fn start_daemon(
                 .is_err()
                 || acknowledgement.trim() != "ACK"
             {
-                std::process::exit(1);
+                exit(1);
             }
             drop(child);
             if begin.send(()).is_err() {
-                std::process::exit(1);
+                exit(1);
             }
             let signal_sender = sender.clone();
             let signal_stopped = Arc::clone(&stopped);
@@ -235,9 +236,9 @@ pub(crate) fn start_daemon(
             }
             if executor.join().is_err() {
                 eprintln!("Task executor panicked");
-                std::process::exit(1);
+                exit(1);
             }
-            std::process::exit(0);
+            exit(0);
         }
     }
 }
@@ -263,8 +264,9 @@ fn read_ready(reader: &mut impl BufRead) -> Result<(), (String, bool)> {
 
 #[cfg(test)]
 mod tests {
-    use super::read_ready;
     use std::io::Cursor;
+
+    use super::read_ready;
 
     #[test]
     fn readiness_requires_explicit_success() {

@@ -588,11 +588,12 @@ mod tests {
 
     use rusqlite::Connection;
 
-    use super::DataBase;
     use crate::{
         db::schema::initialize_db,
         types::{GpuSelection, Job, JobStatus},
     };
+
+    use super::DataBase;
 
     /// Create an in-memory database with the production schema and constraints.
     fn database() -> DataBase {
