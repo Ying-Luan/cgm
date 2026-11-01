@@ -275,22 +275,6 @@ impl GpuManager {
 
         println!("Released GPUs {:?}", gpus);
     }
-
-    /// Get PID of first GPU with this job_id
-    ///
-    /// # Arguments
-    ///
-    /// * `job_id` - Job ID
-    ///
-    /// # Returns
-    ///
-    /// PID of first GPU with this job_id, None if not found
-    pub(crate) fn get_first_pid_by_job_id(&self, job_id: usize) -> Option<u32> {
-        self.gpus
-            .iter()
-            .find(|g| g.job_id == Some(job_id))
-            .and_then(|g| g.pid)
-    }
 }
 
 /// Get GPU info list

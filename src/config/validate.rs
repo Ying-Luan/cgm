@@ -24,10 +24,6 @@ pub(crate) fn validate_effective(config: &EffectiveConfig) -> Result<(), String>
     if config.start.threshold.value > 100 {
         return Err("start.threshold must be between 0 and 100".to_string());
     }
-    if config.submit.required_gpus.value == 0 {
-        return Err("submit.required_gpus must be greater than 0".to_string());
-    }
-
     Ok(())
 }
 
@@ -55,13 +51,10 @@ pub(super) fn validate_config(config: &Config) -> Result<(), String> {
             return Err("start.threshold must be between 0 and 100".to_string());
         }
     }
-    if let Some(submit) = &config.submit {
-        if let Some(allow_gpus) = &submit.allow_gpus {
-            validate_gpu_selection(allow_gpus, "submit.allow_gpus")?;
-        }
-        if submit.required_gpus == Some(0) {
-            return Err("submit.required_gpus must be greater than 0".to_string());
-        }
+    if let Some(submit) = &config.submit
+        && let Some(allow_gpus) = &submit.allow_gpus
+    {
+        validate_gpu_selection(allow_gpus, "submit.allow_gpus")?;
     }
 
     Ok(())

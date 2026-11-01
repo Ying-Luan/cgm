@@ -35,3 +35,6 @@ pub(crate) const SOCKET_NAME: &[u8] = b"cgm.daemon";
 
 /// Installation instructions linked from startup errors.
 pub(crate) const INSTALL_GUIDE_URL: &str = "https://github.com/Ying-Luan/cgm#installation";
+
+/// Maximum number of concurrent jobs that do not request GPUs.
+pub(crate) const MAX_CPU_JOBS: usize = 4;

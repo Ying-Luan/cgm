@@ -73,7 +73,7 @@ cgm submit [OPTIONS] -- <COMMAND>
 | `--follow` | ` ` | `true` | 任务提交后打开 `less`，阻塞终端 | `submit.detach` |
 | `--id` | ` ` | `false` | 只输出新任务 ID 并立即返回 | ` ` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | 指定日志文件路径 | ` ` |
-| `--require-gpus <N>` | `-g <N>` | `1` | 指定该任务需要申请的 GPU 数量 | `submit.required_gpus` |
+| `--require-gpus <N>` | `-g <N>` | `1` | 指定申请的 GPU 数量；`0` 表示不申请 GPU | `submit.required_gpus` |
 
 ### 示例
 
@@ -118,7 +118,7 @@ cgm rerun <JOB_ID> [OPTIONS]
 | `--follow` | ` ` | `true` | 任务提交后打开 `less`，阻塞终端 | `rerun.detach` |
 | `--id` | ` ` | `false` | 只输出新任务 ID 并立即返回 | ` ` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | 指定新任务日志路径 | ` ` |
-| `--require-gpus <N>` | `-g <N>` | ` ` | 覆盖新任务申请的 GPU 数量 | ` ` |
+| `--require-gpus <N>` | `-g <N>` | ` ` | 覆盖新任务申请的 GPU 数量；`0` 表示不申请 | ` ` |
 
 重新运行会保留源任务允许使用的 GPU ID，但不会继承源任务依赖。
 

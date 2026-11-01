@@ -153,7 +153,7 @@ enum Commands {
         #[arg(
             short = 'g',
             long,
-            help = "Number of GPUs to request; defaults to config or 1"
+            help = "Number of GPUs to request; 0 requests none, defaults to config or 1"
         )]
         require_gpus: Option<usize>,
         /// Command to execute
@@ -219,7 +219,7 @@ enum Commands {
         )]
         print_id: bool,
         /// Override number of GPUs
-        #[arg(short = 'g', long, help = "Override number of GPUs")]
+        #[arg(short = 'g', long, help = "Override number of GPUs; 0 requests none")]
         require_gpus: Option<usize>,
     },
     /// Cancel job

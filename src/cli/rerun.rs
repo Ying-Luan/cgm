@@ -78,9 +78,6 @@ pub(super) fn run(
 ) {
     require_daemon();
 
-    if require_gpus == Some(0) {
-        exit_with_error("required-gpus must be greater than 0");
-    }
     let config = merge_config(detach, follow).unwrap_or_else(|error| exit_with_error(&error));
     let allowed_gpus = allow_gpus
         .map(|value| GpuSelection::parse(&value))

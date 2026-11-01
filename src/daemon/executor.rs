@@ -8,7 +8,7 @@ use std::{
     os::unix::process::CommandExt,
     process::Command,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver},
     },
@@ -23,6 +23,7 @@ use nix::{
 };
 
 use crate::{
+    constants::MAX_CPU_JOBS,
     db::DbPool,
     hardware::GpuPool,
     types::{Job, JobStatus},
@@ -73,8 +74,12 @@ fn execute_job(job: &Job, gpus: &[usize]) -> std::io::Result<std::process::Child
         .arg(job.command.join(" "))
         .current_dir(&job.cwd)
         .env_clear()
+        .envs(
+            job.envs
+                .iter()
+                .filter(|(key, _)| *key != "CUDA_VISIBLE_DEVICES"),
+        )
         .env("CUDA_VISIBLE_DEVICES", assigned_gpus)
-        .envs(&job.envs)
         .stdout(log_file)
         .stderr(err_file)
         .process_group(0);
@@ -101,6 +106,10 @@ fn execute_job(job: &Job, gpus: &[usize]) -> std::io::Result<std::process::Child
 struct Task {
     /// Cancellation was requested before the terminal status update.
     cancelled: Arc<AtomicBool>,
+    /// Whether this task consumes a CPU-only concurrency slot.
+    cpu_only: bool,
+    /// Child process group leader, cleared when the child is reaped.
+    pid: Arc<Mutex<Option<u32>>>,
     /// Sole child reaper and finalizer.
     worker: Option<JoinHandle<()>>,
 }
@@ -166,6 +175,26 @@ fn terminate(pids: &[u32], grace: Duration) -> Result<(), String> {
     Ok(())
 }
 
+/// Keep pending GPU jobs and only as many CPU-only jobs as there are slots.
+///
+/// # Arguments
+///
+/// * `pending` - Pending jobs to filter in-place.
+/// * `running` - Number of CPU-only jobs currently running.
+fn limit_cpu_jobs(pending: &mut Vec<Job>, running: usize) {
+    let mut slots = MAX_CPU_JOBS.saturating_sub(running);
+    pending.retain(|job| {
+        if job.required_gpus != 0 {
+            true
+        } else if slots > 0 {
+            slots -= 1;
+            true
+        } else {
+            false
+        }
+    });
+}
+
 /// Allocate GPUs, start a job, and register its wait thread.
 ///
 /// # Arguments
@@ -195,7 +224,10 @@ fn launch_job(
     }
 
     let id = job.id;
+    let cpu_only = job.required_gpus == 0;
     let cancelled = Arc::new(AtomicBool::new(false));
+    let pid = Arc::new(Mutex::new(None));
+    let worker_pid = Arc::clone(&pid);
     let worker_cancelled = Arc::clone(&cancelled);
     let worker_gpus = gpus.clone();
     let worker_db = Arc::clone(db);
@@ -205,13 +237,13 @@ fn launch_job(
         .spawn(move || {
             let success = match execute_job(&job, &worker_gpus) {
                 Ok(mut child) => {
+                    *worker_pid.lock().unwrap() = Some(child.id());
                     // Record subprocess PID for subsequent monitoring and management
                     worker_gpu_pool
                         .lock()
                         .unwrap()
                         .update_pid_batch(&worker_gpus, child.id());
 
-                    // Wait for subprocess to end, return final status based on exit code
                     child.wait().is_ok_and(|status| status.success())
                 }
                 Err(error) => {
@@ -226,6 +258,8 @@ fn launch_job(
             } else {
                 JobStatus::Failed
             };
+
+            *worker_pid.lock().unwrap() = None;
             if let Err(error) = worker_db.lock().unwrap().update_status(id, status, None) {
                 eprintln!("Failed to persist job {id} status: {error}");
             }
@@ -237,6 +271,8 @@ fn launch_job(
                 id,
                 Task {
                     cancelled,
+                    cpu_only,
+                    pid,
                     worker: Some(worker),
                 },
             );
@@ -371,12 +407,14 @@ impl Executor {
     /// Schedule pending jobs once.
     fn schedule(&mut self) {
         self.gpu_pool.lock().unwrap().refresh_state();
-        let pending = self
+        let mut pending = self
             .db
             .lock()
             .unwrap()
             .get_jobs_by_status(JobStatus::Pending)
             .unwrap_or_default();
+        let running_cpu = self.tasks.values().filter(|task| task.cpu_only).count();
+        limit_cpu_jobs(&mut pending, running_cpu);
         let mut launch =
             |job, gpus| launch_job(job, gpus, &self.db, &self.gpu_pool, &mut self.tasks);
         self.scheduler
@@ -411,11 +449,8 @@ impl Executor {
             .tasks
             .get(&id)
             .ok_or_else(|| "Running task has no process registration".to_string())?;
-        let pid = self
-            .gpu_pool
-            .lock()
-            .unwrap()
-            .get_first_pid_by_job_id(id)
+        let registered = task.pid.lock().unwrap();
+        let pid = (*registered)
             .ok_or_else(|| "Job is still starting; retry cancellation later".to_string())?;
         task.cancelled.store(true, Ordering::SeqCst);
         terminate(&[pid], GRACE)
@@ -439,12 +474,13 @@ impl Executor {
             self.stopping.store(true, Ordering::SeqCst);
         } else {
             let mut pids = Vec::new();
-            for id in self.tasks.keys() {
-                let pid = self
-                    .gpu_pool
-                    .lock()
-                    .unwrap()
-                    .get_first_pid_by_job_id(*id)
+            let registered = self
+                .tasks
+                .values()
+                .map(|task| task.pid.lock().unwrap())
+                .collect::<Vec<_>>();
+            for pid in &registered {
+                let pid = (**pid)
                     .ok_or_else(|| "A job is still starting; retry stop later".to_string())?;
                 pids.push(pid);
             }
@@ -453,6 +489,7 @@ impl Executor {
             }
             self.stopping.store(true, Ordering::SeqCst);
             terminate(&pids, GRACE)?;
+            drop(registered);
             for task in self.tasks.values_mut() {
                 task.join()?;
             }

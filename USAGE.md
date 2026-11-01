@@ -73,7 +73,7 @@ cgm submit [OPTIONS] -- <COMMAND>
 | `--follow` | ` ` | `true` | Open `less` after submission and follow the log, blocks the terminal | `submit.detach` |
 | `--id` | ` ` | `false` | Print only the new job ID and return immediately | ` ` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | Log file path | ` ` |
-| `--require-gpus <N>` | `-g <N>` | `1` | Number of GPUs to request for this job | `submit.required_gpus` |
+| `--require-gpus <N>` | `-g <N>` | `1` | Number of GPUs to request; `0` requests none | `submit.required_gpus` |
 
 ### Examples
 
@@ -118,7 +118,7 @@ cgm rerun <JOB_ID> [OPTIONS]
 | `--follow` | ` ` | `true` | Open `less` to follow the new job log, blocks the terminal | `rerun.detach` |
 | `--id` | ` ` | `false` | Print only the new job ID and return immediately | ` ` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | Set the new job's log path | ` ` |
-| `--require-gpus <N>` | `-g <N>` | ` ` | Override the number of GPUs for the new job | ` ` |
+| `--require-gpus <N>` | `-g <N>` | ` ` | Override the number of GPUs for the new job; `0` requests none | ` ` |
 
 A rerun keeps the source job's allowed GPU IDs but does not inherit its dependencies.
 

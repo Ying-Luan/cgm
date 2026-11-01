@@ -329,7 +329,8 @@ impl Server {
             caller,
         )?;
 
-        if let Some(allowed_gpus) = job.allowed_gpus.ids()
+        if job.required_gpus > 0
+            && let Some(allowed_gpus) = job.allowed_gpus.ids()
             && (!self.gpu_pool.lock().unwrap().manages_gpu_ids(allowed_gpus)
                 || job.required_gpus > allowed_gpus.len())
         {
