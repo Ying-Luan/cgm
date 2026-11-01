@@ -20,7 +20,7 @@ pub(super) fn exit_with_error(error: &str) -> ! {
 /// Terminate with a warning when the daemon is not running.
 pub(super) fn require_daemon() {
     if !is_daemon_running() {
-        println!("{}", yellow!("Daemon is not running."));
+        eprintln!("{}", yellow!("Daemon is not running."));
         exit(1);
     }
 }

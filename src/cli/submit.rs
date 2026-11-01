@@ -24,6 +24,7 @@ use super::utils::{exit_with_error, require_daemon};
 /// * `detach` - Detach flag, returns immediately after submission
 /// * `follow` - Follow flag, opens less to follow the job log
 /// * `log` - Optional log file path
+/// * `print_id` - Print only the new job ID
 /// * `require_gpus` - Optional number of GPUs to request
 pub(super) fn run(
     allow_gpus: Option<String>,
@@ -32,6 +33,7 @@ pub(super) fn run(
     detach: bool,
     follow: bool,
     log: Option<String>,
+    print_id: bool,
     require_gpus: Option<usize>,
 ) {
     require_daemon();
@@ -67,6 +69,10 @@ pub(super) fn run(
 
     match submit_job(request) {
         Ok(job) => {
+            if print_id {
+                println!("{}", job.id);
+                return;
+            }
             println!("{}", green!("Job submitted successfully."));
             show_job_info(&job, false);
             if !config.detach.value

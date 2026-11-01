@@ -71,6 +71,7 @@ cgm submit [OPTIONS] -- <COMMAND>
 | `--depends-on <ID,ID,...>` | `-D` | ` ` | Comma-separated prerequisite jobs that must complete successfully | ` ` |
 | `--detach` | `-d` | `false` | Detach mode. Returns immediately without blocking the terminal | `submit.detach` |
 | `--follow` | ` ` | `true` | Open `less` after submission and follow the log, blocks the terminal | `submit.detach` |
+| `--id` | ` ` | `false` | Print only the new job ID and return immediately | ` ` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | Log file path | ` ` |
 | `--require-gpus <N>` | `-g <N>` | `1` | Number of GPUs to request for this job | `submit.required_gpus` |
 
@@ -78,6 +79,10 @@ cgm submit [OPTIONS] -- <COMMAND>
 
 ```bash
 cgm submit -g 1 -- python main.py
+
+first=$(cgm submit --id -- python preprocess.py)
+second=$(cgm submit --id --depends-on "$first" -- python train.py)
+third=$(cgm submit --id --depends-on "$second" -- python evaluate.py)
 ```
 
 ### Regarding Environment Variable Expansion
@@ -111,6 +116,7 @@ cgm rerun <JOB_ID> [OPTIONS]
 | `--depends-on <ID,ID,...>` | `-D` | ` ` | Specify prerequisite jobs for the new job, comma-separated | ` ` |
 | `--detach` | `-d` | `false` | Enable detach mode. Do not open the log viewer after submission | `rerun.detach` |
 | `--follow` | ` ` | `true` | Open `less` to follow the new job log, blocks the terminal | `rerun.detach` |
+| `--id` | ` ` | `false` | Print only the new job ID and return immediately | ` ` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | Set the new job's log path | ` ` |
 | `--require-gpus <N>` | `-g <N>` | ` ` | Override the number of GPUs for the new job | ` ` |
 

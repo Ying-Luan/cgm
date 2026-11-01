@@ -71,6 +71,7 @@ cgm submit [OPTIONS] -- <COMMAND>
 | `--depends-on <ID,ID,...>` | `-D` | ` ` | 指定必须成功完成的前置任务，使用逗号分隔 | ` ` |
 | `--detach` | `-d` | `false` | 开启分离模式。任务提交后立即返回，不阻塞终端 | `submit.detach` |
 | `--follow` | ` ` | `true` | 任务提交后打开 `less`，阻塞终端 | `submit.detach` |
+| `--id` | ` ` | `false` | 只输出新任务 ID 并立即返回 | ` ` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | 指定日志文件路径 | ` ` |
 | `--require-gpus <N>` | `-g <N>` | `1` | 指定该任务需要申请的 GPU 数量 | `submit.required_gpus` |
 
@@ -78,6 +79,10 @@ cgm submit [OPTIONS] -- <COMMAND>
 
 ```bash
 cgm submit -g 1 -- python main.py
+
+first=$(cgm submit --id -- python preprocess.py)
+second=$(cgm submit --id --depends-on "$first" -- python train.py)
+third=$(cgm submit --id --depends-on "$second" -- python evaluate.py)
 ```
 
 ### 关于环境变量引用
@@ -111,6 +116,7 @@ cgm rerun <JOB_ID> [OPTIONS]
 | `--depends-on <ID,ID,...>` | `-D` | ` ` | 指定新任务的前置任务，使用逗号分隔 | ` ` |
 | `--detach` | `-d` | `false` | 开启分离模式。提交后不打开日志查看器 | `rerun.detach` |
 | `--follow` | ` ` | `true` | 任务提交后打开 `less`，阻塞终端 | `rerun.detach` |
+| `--id` | ` ` | `false` | 只输出新任务 ID 并立即返回 | ` ` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | 指定新任务日志路径 | ` ` |
 | `--require-gpus <N>` | `-g <N>` | ` ` | 覆盖新任务申请的 GPU 数量 | ` ` |
 

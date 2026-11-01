@@ -124,6 +124,7 @@ enum Commands {
         #[arg(
             short,
             long,
+            default_value = "false",
             conflicts_with = "follow",
             help = "Detach mode. Opens less to follow log after submission"
         )]
@@ -132,6 +133,7 @@ enum Commands {
         #[arg(
             short,
             long,
+            default_value = "false",
             conflicts_with = "detach",
             help = "Follow mode. Opens less to follow the job log after submission"
         )]
@@ -139,6 +141,14 @@ enum Commands {
         /// Log file path
         #[arg(short, long, help = "Log file path")]
         log: Option<String>,
+        /// Print only the new job ID
+        #[arg(
+            long = "id",
+            default_value = "false",
+            conflicts_with_all = ["detach", "follow"], 
+            help = "Print only the new job ID and return immediately"
+        )]
+        print_id: bool,
         /// Number of GPUs to request
         #[arg(
             short = 'g',
@@ -183,6 +193,7 @@ enum Commands {
         #[arg(
             short,
             long,
+            default_value = "false",
             conflicts_with = "follow",
             help = "Enable detach mode. Do not open the log viewer after submission"
         )]
@@ -191,6 +202,7 @@ enum Commands {
         #[arg(
             short,
             long,
+            default_value = "false",
             conflicts_with = "detach",
             help = "Open less to follow the new job log"
         )]
@@ -198,6 +210,14 @@ enum Commands {
         /// Set the new job's log path
         #[arg(short, long, help = "Set the new job's log path")]
         log: Option<String>,
+        /// Print only the new job ID
+        #[arg(
+            long = "id",
+            default_value = "false",
+            conflicts_with_all = ["detach", "follow"],
+            help = "Print only the new job ID and return immediately"
+        )]
+        print_id: bool,
         /// Override number of GPUs
         #[arg(short = 'g', long, help = "Override number of GPUs")]
         require_gpus: Option<usize>,
@@ -264,7 +284,12 @@ enum Commands {
         )]
         limit: Option<usize>,
         /// Show detailed field names and full commands
-        #[arg(short, long, help = "Show detailed field names and full commands")]
+        #[arg(
+            short,
+            long,
+            default_value = "false",
+            help = "Show detailed field names and full commands"
+        )]
         long_format: bool,
     },
     /// View complete job information
@@ -276,6 +301,7 @@ enum Commands {
         #[arg(
             short,
             long,
+            default_value = "false",
             help = "Show all saved environment variables and their values"
         )]
         env: bool,
@@ -324,6 +350,7 @@ pub(crate) fn run() {
             detach,
             follow,
             log,
+            print_id,
             require_gpus,
         } => submit::run(
             allow_gpus,
@@ -332,6 +359,7 @@ pub(crate) fn run() {
             detach,
             follow,
             log,
+            print_id,
             require_gpus,
         ),
         Commands::Rerun {
@@ -342,6 +370,7 @@ pub(crate) fn run() {
             detach,
             follow,
             log,
+            print_id,
             require_gpus,
         } => rerun::run(
             id,
@@ -351,6 +380,7 @@ pub(crate) fn run() {
             detach,
             follow,
             log,
+            print_id,
             require_gpus,
         ),
         Commands::Cancel { id, force } => cancel::run(id, force),
@@ -374,6 +404,44 @@ mod tests {
     use super::{Cli, Commands};
 
     #[test]
+    fn start_requires_exactly_one_mode() {
+        assert!(Cli::try_parse_from(["cgm", "start"]).is_err());
+        assert!(Cli::try_parse_from(["cgm", "start", "--user", "--system"]).is_err());
+        assert!(Cli::try_parse_from(["cgm", "start", "--user"]).is_ok());
+        assert!(Cli::try_parse_from(["cgm", "start", "--system"]).is_ok());
+    }
+
+    #[test]
+    fn submit_preserves_dependency_argument() {
+        let cli = Cli::try_parse_from([
+            "cgm",
+            "submit",
+            "--allow-gpus",
+            "0,2",
+            "--depends-on",
+            "1,2,3",
+            "--require-gpus",
+            "2",
+            "--",
+            "true",
+        ])
+        .unwrap();
+        let Commands::Submit {
+            allow_gpus,
+            depends_on,
+            require_gpus,
+            ..
+        } = cli.command
+        else {
+            panic!("expected submit command");
+        };
+
+        assert_eq!(allow_gpus.as_deref(), Some("0,2"));
+        assert_eq!(depends_on.as_deref(), Some("1,2,3"));
+        assert_eq!(require_gpus, Some(2));
+    }
+
+    #[test]
     fn rerun_parses_current_fields() {
         let cli = Cli::try_parse_from(["cgm", "rerun", "1"]).unwrap();
         assert!(matches!(cli.command, Commands::Rerun { current: None, .. }));
@@ -393,6 +461,60 @@ mod tests {
     #[test]
     fn rerun_rejects_duplicate_current_fields() {
         assert!(Cli::try_parse_from(["cgm", "rerun", "1", "-c", "env,e"]).is_err());
+    }
+
+    #[test]
+    fn submit_and_rerun_detach_and_follow_conflict() {
+        assert!(
+            Cli::try_parse_from(["cgm", "submit", "--detach", "--follow", "--", "true"]).is_err()
+        );
+        assert!(Cli::try_parse_from(["cgm", "rerun", "1", "--detach", "--follow"]).is_err());
+    }
+
+    #[test]
+    fn submit_and_rerun_id_output_parses_and_conflicts_with_log_modes() {
+        let cli = Cli::try_parse_from(["cgm", "submit", "--id", "--", "true"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Submit { print_id: true, .. }
+        ));
+        let cli = Cli::try_parse_from(["cgm", "rerun", "1", "--id"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Rerun {
+                id: 1,
+                print_id: true,
+                ..
+            }
+        ));
+
+        for flag in ["--detach", "--follow"] {
+            assert!(Cli::try_parse_from(["cgm", "submit", "--id", flag, "--", "true"]).is_err());
+            assert!(Cli::try_parse_from(["cgm", "rerun", "1", "--id", flag]).is_err());
+        }
+    }
+
+    #[test]
+    fn status_parses_quiet() {
+        let cli = Cli::try_parse_from(["cgm", "status", "--quiet"]).unwrap();
+        assert!(matches!(cli.command, Commands::Status { quiet: true }));
+    }
+
+    #[test]
+    fn list_parses_long_format_and_limit() {
+        let cli = Cli::try_parse_from(["cgm", "list", "-l", "--limit", "10"]).unwrap();
+        let Commands::List {
+            all,
+            limit,
+            long_format,
+        } = cli.command
+        else {
+            panic!("expected list command");
+        };
+
+        assert!(!all);
+        assert_eq!(limit, Some(10));
+        assert!(long_format);
     }
 
     #[test]
@@ -437,14 +559,6 @@ mod tests {
     }
 
     #[test]
-    fn start_requires_exactly_one_mode() {
-        assert!(Cli::try_parse_from(["cgm", "start"]).is_err());
-        assert!(Cli::try_parse_from(["cgm", "start", "--user", "--system"]).is_err());
-        assert!(Cli::try_parse_from(["cgm", "start", "--user"]).is_ok());
-        assert!(Cli::try_parse_from(["cgm", "start", "--system"]).is_ok());
-    }
-
-    #[test]
     fn config_system_flag_accepts_both_positions() {
         for argv in [
             ["cgm", "config", "--system", "show"],
@@ -456,66 +570,5 @@ mod tests {
             };
             assert!(system);
         }
-    }
-
-    #[test]
-    fn status_parses_quiet() {
-        let cli = Cli::try_parse_from(["cgm", "status", "--quiet"]).unwrap();
-        assert!(matches!(cli.command, Commands::Status { quiet: true }));
-    }
-
-    #[test]
-    fn detach_and_follow_conflict() {
-        assert!(
-            Cli::try_parse_from(["cgm", "submit", "--detach", "--follow", "--", "true"]).is_err()
-        );
-        assert!(Cli::try_parse_from(["cgm", "rerun", "1", "--detach", "--follow"]).is_err());
-    }
-
-    #[test]
-    fn submit_preserves_dependency_argument() {
-        let cli = Cli::try_parse_from([
-            "cgm",
-            "submit",
-            "--allow-gpus",
-            "0,2",
-            "--depends-on",
-            "1,2,3",
-            "--require-gpus",
-            "2",
-            "--",
-            "true",
-        ])
-        .unwrap();
-        let Commands::Submit {
-            allow_gpus,
-            depends_on,
-            require_gpus,
-            ..
-        } = cli.command
-        else {
-            panic!("expected submit command");
-        };
-
-        assert_eq!(allow_gpus.as_deref(), Some("0,2"));
-        assert_eq!(depends_on.as_deref(), Some("1,2,3"));
-        assert_eq!(require_gpus, Some(2));
-    }
-
-    #[test]
-    fn list_parses_long_format_and_limit() {
-        let cli = Cli::try_parse_from(["cgm", "list", "-l", "--limit", "10"]).unwrap();
-        let Commands::List {
-            all,
-            limit,
-            long_format,
-        } = cli.command
-        else {
-            panic!("expected list command");
-        };
-
-        assert!(!all);
-        assert_eq!(limit, Some(10));
-        assert!(long_format);
     }
 }

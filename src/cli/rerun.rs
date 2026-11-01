@@ -63,6 +63,7 @@ impl FromStr for CurrentFields {
 /// * `detach` - Detach flag, returns immediately after submission
 /// * `follow` - Follow flag, opens less to follow the new job log
 /// * `log` - Optional log path override
+/// * `print_id` - Print only the new job ID
 /// * `require_gpus` - Optional GPU count override
 pub(super) fn run(
     id: usize,
@@ -72,6 +73,7 @@ pub(super) fn run(
     detach: bool,
     follow: bool,
     log: Option<String>,
+    print_id: bool,
     require_gpus: Option<usize>,
 ) {
     require_daemon();
@@ -106,6 +108,10 @@ pub(super) fn run(
     };
     match rerun_job(id, context, allowed_gpus, dependencies, require_gpus, log) {
         Ok(job) => {
+            if print_id {
+                println!("{}", job.id);
+                return;
+            }
             println!("{}", green!("Job rerun submitted successfully."));
             show_job_info(&job, false);
             if !config.detach.value
