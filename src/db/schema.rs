@@ -19,6 +19,7 @@ pub(crate) fn initialize_db(conn: &Connection) -> rusqlite::Result<()> {
         CREATE TABLE IF NOT EXISTS jobs (
             id                     INTEGER PRIMARY KEY,
             status                 TEXT    NOT NULL CHECK (status IN ('unknown', 'blocked', 'pending', 'running', 'completed', 'failed', 'cancelled')),
+            uid                    INTEGER NOT NULL,
             username               TEXT    NOT NULL,
             command                TEXT    NOT NULL,  -- JSON array, e.g. [\"python\",\"main.py\"]
             allowed_gpus           TEXT    NOT NULL,  -- Serialized GpuSelection

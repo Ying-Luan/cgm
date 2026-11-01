@@ -7,7 +7,6 @@ use std::{io::Write, time::Duration};
 use nix::unistd::Uid;
 
 use crate::{
-    os::get_current_username,
     runtime::{connection_uid, socket},
     types::{
         DaemonInfo, DeleteTarget, GpuInfo, GpuSelection, JobInfo, JobPrintInfo, JobRequest,
@@ -146,7 +145,6 @@ pub(crate) fn rerun_job(
         dependencies,
         required_gpus,
         log_path,
-        username: get_current_username(),
     })? {
         Response::Rerun { job } => Ok(*job),
         Response::Error { message } => Err(message),
@@ -166,11 +164,7 @@ pub(crate) fn rerun_job(
 /// * `()` - Success
 /// * `String` - Error message
 pub(crate) fn cancel_job(id: usize, force: bool) -> Result<(), String> {
-    match send_request(&Request::Cancel {
-        id,
-        username: get_current_username(),
-        force,
-    })? {
+    match send_request(&Request::Cancel { id, force })? {
         Response::Cancel => Ok(()),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
@@ -220,10 +214,7 @@ pub(crate) fn query_gpu_status() -> Result<(Vec<GpuInfo>, DaemonInfo), String> {
 /// * `(Vec<JobPrintInfo>, usize)` - Job info list and total count
 /// * `String` - Error message
 pub(crate) fn list_jobs(limit: Option<usize>) -> Result<(Vec<JobPrintInfo>, usize), String> {
-    match send_request(&Request::List {
-        username: get_current_username(),
-        limit,
-    })? {
+    match send_request(&Request::List { limit })? {
         Response::List { jobs, total } => Ok((jobs, total)),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
@@ -240,10 +231,7 @@ pub(crate) fn list_jobs(limit: Option<usize>) -> Result<(Vec<JobPrintInfo>, usiz
 ///
 /// The saved job details, including environment variables and directory.
 pub(crate) fn get_job_info(id: usize) -> Result<JobInfo, String> {
-    match send_request(&Request::Info {
-        id,
-        username: get_current_username(),
-    })? {
+    match send_request(&Request::Info { id })? {
         Response::Info { job } => Ok(*job),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
@@ -261,10 +249,7 @@ pub(crate) fn get_job_info(id: usize) -> Result<JobInfo, String> {
 /// * `String` - Log file path
 /// * `String` - Error message
 pub(crate) fn get_log_path(id: usize) -> Result<String, String> {
-    match send_request(&Request::Log {
-        id,
-        username: get_current_username(),
-    })? {
+    match send_request(&Request::Log { id })? {
         Response::Log { log_path } => Ok(log_path),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response from daemon".to_string()),

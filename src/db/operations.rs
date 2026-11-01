@@ -9,6 +9,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use nix::unistd::Uid;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
@@ -45,6 +46,7 @@ pub(crate) fn check_db_compatible(conn: &Connection) -> bool {
         &[
             "id",
             "status",
+            "uid",
             "username",
             "command",
             "allowed_gpus",
@@ -195,11 +197,12 @@ impl DataBase {
         let envs_json = serde_json::to_string(&job.envs).map_err(|e| e.to_string())?;
         transaction
             .execute(
-                "INSERT INTO jobs (id, status, username, command, allowed_gpus, allocated_gpus, required_gpus, envs, log_path, cwd, remaining_dependencies, start_time, end_time)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                "INSERT INTO jobs (id, status, uid, username, command, allowed_gpus, allocated_gpus, required_gpus, envs, log_path, cwd, remaining_dependencies, start_time, end_time)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 job.id as i64,
                 job.status.as_str(),
+                job.uid.as_raw() as i64,
                 job.username,
                 command_json,
                 allowed_gpus_json,
@@ -446,31 +449,32 @@ impl DataBase {
         self.query_jobs(condition, params![status.as_str()])
     }
 
-    /// Get jobs by username
+    /// Get jobs by owner UID
     ///
     /// # Arguments
     ///
-    /// * `username` - Username
+    /// * `uid` - Owner UID
     /// * `limit` - Limit number of jobs returned, None for all
     ///
     /// # Returns
     ///
     /// Job list
-    pub(crate) fn get_jobs_by_username(
+    pub(crate) fn get_jobs_by_uid(
         &self,
-        username: &str,
+        uid: Uid,
         limit: Option<usize>,
     ) -> rusqlite::Result<Vec<Job>> {
         match limit {
             Some(n) => {
-                let condition = "WHERE username = ?1 ORDER BY id DESC LIMIT ?2";
-                let mut jobs = self.query_jobs(condition, params![username, n as i32])?;
+                let condition = "WHERE uid = ?1 ORDER BY id DESC LIMIT ?2";
+                let mut jobs =
+                    self.query_jobs(condition, params![uid.as_raw() as i64, n as i32])?;
                 jobs.reverse();
                 Ok(jobs)
             }
             None => {
-                let condition = "WHERE username = ?1 ORDER BY id ASC";
-                self.query_jobs(condition, params![username])
+                let condition = "WHERE uid = ?1 ORDER BY id ASC";
+                self.query_jobs(condition, params![uid.as_raw() as i64])
             }
         }
     }
@@ -533,7 +537,7 @@ impl DataBase {
         params: P,
     ) -> rusqlite::Result<Vec<Job>> {
         let sql = format!(
-            "SELECT id, status, username, command, allowed_gpus, allocated_gpus, required_gpus, envs, log_path, cwd, remaining_dependencies, start_time, end_time FROM jobs {}",
+            "SELECT id, status, uid, username, command, allowed_gpus, allocated_gpus, required_gpus, envs, log_path, cwd, remaining_dependencies, start_time, end_time FROM jobs {}",
             condition
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -542,29 +546,32 @@ impl DataBase {
             let id_int: i64 = row.get(0)?;
             let status_str: String = row.get(1)?;
             let status = JobStatus::from_str(&status_str);
-            let command_json: String = row.get(3)?;
+            let uid = Uid::from_raw(row.get::<_, i64>(2)? as u32);
+            let username: String = row.get(3)?;
+            let command_json: String = row.get(4)?;
             let command: Vec<String> = serde_json::from_str(&command_json).unwrap_or_default();
-            let allowed_gpus_json: String = row.get(4)?;
+            let allowed_gpus_json: String = row.get(5)?;
             let allowed_gpus: GpuSelection =
                 serde_json::from_str(&allowed_gpus_json).unwrap_or(GpuSelection::All);
-            let allocated_gpus_json: Option<String> = row.get(5)?;
+            let allocated_gpus_json: Option<String> = row.get(6)?;
             let allocated_gpus =
                 allocated_gpus_json.map(|json| serde_json::from_str(&json).unwrap_or_default());
-            let required_gpus_int: i64 = row.get(6)?;
-            let envs_json: String = row.get(7)?;
+            let required_gpus_int: i64 = row.get(7)?;
+            let envs_json: String = row.get(8)?;
             let envs: HashMap<String, String> =
                 serde_json::from_str(&envs_json).unwrap_or_default();
-            let log_path: String = row.get(8)?;
-            let cwd: String = row.get(9)?;
-            let remaining_dependencies: i64 = row.get(10)?;
-            let start_time: Option<i64> = row.get(11)?;
-            let end_time: Option<i64> = row.get(12)?;
+            let log_path: String = row.get(9)?;
+            let cwd: String = row.get(10)?;
+            let remaining_dependencies: i64 = row.get(11)?;
+            let start_time: Option<i64> = row.get(12)?;
+            let end_time: Option<i64> = row.get(13)?;
 
             // Construct and return Job struct
             Ok(Job {
                 id: id_int as usize,
                 status,
-                username: row.get(2)?,
+                uid,
+                username,
                 command,
                 allowed_gpus,
                 allocated_gpus,
@@ -586,6 +593,7 @@ impl DataBase {
 mod tests {
     use std::collections::HashMap;
 
+    use nix::unistd::Uid;
     use rusqlite::Connection;
 
     use crate::{
@@ -608,6 +616,7 @@ mod tests {
         Job {
             id,
             status: JobStatus::Pending,
+            uid: Uid::from_raw(1000),
             username: "user".to_string(),
             command: vec!["true".to_string()],
             allowed_gpus: GpuSelection::All,

@@ -19,7 +19,7 @@ use std::{
 use nix::{
     errno::Errno,
     sys::signal::{self, Signal},
-    unistd::{Pid, User},
+    unistd::{Pid, Uid, User},
 };
 
 use crate::{
@@ -47,9 +47,14 @@ const GRACE: Duration = Duration::from_secs(5);
 ///
 /// Subprocess handle, can wait via `child.wait()`.
 fn execute_job(job: &Job, gpus: &[usize]) -> std::io::Result<std::process::Child> {
-    let user = User::from_name(&job.username)
+    let user = User::from_uid(job.uid)
         .map_err(std::io::Error::from)?
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Job user not found"))?;
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Job owner UID {} not found", job.uid),
+            )
+        })?;
     // only open log file
     let log_file = File::options()
         .create(true)
@@ -330,12 +335,8 @@ impl Executor {
             };
             if let Some(event) = event {
                 match event {
-                    Event::Cancel {
-                        id,
-                        username,
-                        reply,
-                    } => {
-                        let result = self.cancel(id, &username).and_then(|()| {
+                    Event::Cancel { id, caller, reply } => {
+                        let result = self.cancel(id, caller).and_then(|()| {
                             self.tasks
                                 .get_mut(&id)
                                 .ok_or_else(|| {
@@ -387,12 +388,12 @@ impl Executor {
     /// # Arguments
     ///
     /// * `id` - Task ID.
-    /// * `username` - Authenticated requester.
+    /// * `caller` - Authenticated requester UID.
     ///
     /// # Returns
     ///
     /// Success after the process group was terminated, or an error.
-    fn cancel(&self, id: usize, username: &str) -> Result<(), String> {
+    fn cancel(&self, id: usize, caller: Uid) -> Result<(), String> {
         let job = self
             .db
             .lock()
@@ -400,7 +401,7 @@ impl Executor {
             .get_job_by_id(id)
             .map_err(|error| error.to_string())?
             .ok_or_else(|| format!("Job {id} not found"))?;
-        if username != "root" && username != job.username {
+        if !caller.is_root() && caller != job.uid {
             return Err("Permission denied".to_string());
         }
         if job.status != JobStatus::Running {

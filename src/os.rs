@@ -4,22 +4,6 @@
 
 use std::process::Command;
 
-use nix::unistd::{Uid, User};
-
-/// Get current username
-///
-/// Returns "unknown" if unable to get username
-///
-/// # Returns
-///
-/// A string representing the current username
-pub(crate) fn get_current_username() -> String {
-    match User::from_uid(Uid::current()) {
-        Ok(Some(user)) => user.name,
-        _ => "unknown".to_string(),
-    }
-}
-
 /// Open log file with system less
 ///
 /// # Arguments

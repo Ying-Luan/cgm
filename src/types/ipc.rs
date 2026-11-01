@@ -59,15 +59,11 @@ pub(crate) enum Request {
         required_gpus: Option<usize>,
         /// Optional log path override
         log_path: Option<String>,
-        /// Requesting username
-        username: String,
     },
     /// Cancel job request
     Cancel {
         /// Job ID
         id: usize,
-        /// Username
-        username: String,
         /// Force termination
         force: bool,
     },
@@ -80,8 +76,6 @@ pub(crate) enum Request {
     Status,
     /// List all jobs request
     List {
-        /// Username
-        username: String,
         /// Limit number of jobs returned
         limit: Option<usize>,
     },
@@ -89,15 +83,11 @@ pub(crate) enum Request {
     Info {
         /// Job ID.
         id: usize,
-        /// Requesting username.
-        username: String,
     },
     /// Get job log path request
     Log {
         /// Job ID
         id: usize,
-        /// Username
-        username: String,
     },
 }
 

@@ -7,7 +7,7 @@ use crate::{
     config::{load_effective, validate_effective},
     macros::green,
     monitor::show_job_info,
-    os::{get_current_username, open_log_with_less},
+    os::open_log_with_less,
     types::{EffectiveSubmitConfig, GpuSelection, JobRequest},
     utils::parse_comma_separated_ids,
 };
@@ -52,7 +52,6 @@ pub(super) fn run(
     }
 
     let request = JobRequest {
-        username: get_current_username(),
         allowed_gpus: config.allow_gpus.value,
         command,
         dependencies,

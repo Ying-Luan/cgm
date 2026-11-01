@@ -5,6 +5,7 @@
 use std::{collections::HashMap, path::Path};
 
 use comfy_table::Color;
+use nix::unistd::{Uid, User};
 use serde::{Deserialize, Serialize};
 
 use crate::constants::{JOB_LOG_FILE_PREFIX, JOB_LOG_FILE_SUFFIX};
@@ -17,7 +18,9 @@ pub(crate) struct Job {
     pub(crate) id: usize,
     /// Job status
     pub(crate) status: JobStatus,
-    /// Submitting user
+    /// Owning user UID.
+    pub(crate) uid: Uid,
+    /// Submitting user name.
     pub(crate) username: String,
     /// Command
     pub(crate) command: Vec<String>,
@@ -51,11 +54,17 @@ impl Job {
     /// * `id` - Job ID
     /// * `req` - Job request
     /// * `log_dir` - Selected daemon's default task log directory.
+    /// * `caller` - Submitting caller UID.
     ///
     /// # Returns
     ///
     /// A pending job with no GPU allocation and a resolved log path.
-    pub(crate) fn from_request(id: usize, req: JobRequest, log_dir: &Path) -> Self {
+    pub(crate) fn from_request(
+        id: usize,
+        req: JobRequest,
+        log_dir: &Path,
+        caller: Uid,
+    ) -> Result<Self, String> {
         let log_path = req
             .log_path
             .map(|path| {
@@ -74,10 +83,15 @@ impl Job {
                     .to_string_lossy()
                     .into_owned()
             });
-        Job {
+        let username = User::from_uid(caller)
+            .map_err(|error| format!("Failed to query user UID {caller}: {error}"))?
+            .ok_or_else(|| format!("User not found for UID {caller}"))?
+            .name;
+        Ok(Job {
             id,
             status: JobStatus::Pending,
-            username: req.username,
+            uid: caller,
+            username,
             command: req.command,
             allowed_gpus: req.allowed_gpus,
             allocated_gpus: None,
@@ -88,7 +102,7 @@ impl Job {
             remaining_dependencies: 0,
             start_time: None,
             end_time: None,
-        }
+        })
     }
 }
 
@@ -155,8 +169,6 @@ impl JobStatus {
 /// Job request struct (used by client to submit)
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct JobRequest {
-    /// Submitting user
-    pub(crate) username: String,
     /// GPU selection this job may use.
     pub(crate) allowed_gpus: GpuSelection,
     /// Command
