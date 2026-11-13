@@ -24,6 +24,7 @@ use super::utils::{exit_with_error, require_daemon};
 /// * `detach` - Detach flag, returns immediately after submission
 /// * `follow` - Follow flag, opens less to follow the job log
 /// * `log` - Optional log file path
+/// * `name` - Optional job name
 /// * `print_id` - Print only the new job ID
 /// * `require_gpus` - Optional number of GPUs to request
 pub(super) fn run(
@@ -33,6 +34,7 @@ pub(super) fn run(
     detach: bool,
     follow: bool,
     log: Option<String>,
+    name: Option<String>,
     print_id: bool,
     require_gpus: Option<usize>,
 ) {
@@ -60,6 +62,7 @@ pub(super) fn run(
         required_gpus: config.required_gpus.value,
         envs: std::env::vars().collect(),
         log_path: log,
+        name,
         cwd: std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|error| {

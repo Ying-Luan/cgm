@@ -49,6 +49,8 @@ pub(crate) enum Request {
     Rerun {
         /// Source job ID
         id: usize,
+        /// Optional name override.
+        name: Option<String>,
         /// Optional current terminal values overriding the saved context
         context: RerunContext,
         /// Optional allowed GPU selection override
@@ -78,6 +80,8 @@ pub(crate) enum Request {
     List {
         /// Limit number of jobs returned
         limit: Option<usize>,
+        /// Optional name substring filter.
+        name: Option<String>,
     },
     /// Get complete job details after checking ownership.
     Info {

@@ -63,6 +63,7 @@ impl FromStr for CurrentFields {
 /// * `detach` - Detach flag, returns immediately after submission
 /// * `follow` - Follow flag, opens less to follow the new job log
 /// * `log` - Optional log path override
+/// * `name` - Optional job name override
 /// * `print_id` - Print only the new job ID
 /// * `require_gpus` - Optional GPU count override
 pub(super) fn run(
@@ -73,6 +74,7 @@ pub(super) fn run(
     detach: bool,
     follow: bool,
     log: Option<String>,
+    name: Option<String>,
     print_id: bool,
     require_gpus: Option<usize>,
 ) {
@@ -103,7 +105,15 @@ pub(super) fn run(
             .is_some_and(|fields| fields.env)
             .then(|| std::env::vars().collect()),
     };
-    match rerun_job(id, context, allowed_gpus, dependencies, require_gpus, log) {
+    match rerun_job(
+        id,
+        name,
+        context,
+        allowed_gpus,
+        dependencies,
+        require_gpus,
+        log,
+    ) {
         Ok(job) => {
             if print_id {
                 println!("{}", job.id);

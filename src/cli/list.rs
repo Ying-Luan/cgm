@@ -18,13 +18,14 @@ use super::utils::{exit_with_error, require_daemon};
 /// * `all` - If true, show all jobs without limit
 /// * `limit` - Optional maximum number of jobs to show
 /// * `long_format` - If true, show the detailed table with full field names and commands
-pub(super) fn run(all: bool, limit: Option<usize>, long_format: bool) {
+/// * `name` - Optional name substring filter
+pub(super) fn run(all: bool, limit: Option<usize>, long_format: bool, name: Option<String>) {
     require_daemon();
 
     let config = merge_config(limit).unwrap_or_else(|error| exit_with_error(&error));
 
     let limit_param = if all { None } else { Some(config.limit.value) };
-    match list_jobs(limit_param) {
+    match list_jobs(limit_param, name) {
         Ok((jobs, total)) => show_list(&jobs, total, long_format),
         Err(error) => exit_with_error(&error),
     }

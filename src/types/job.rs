@@ -16,6 +16,8 @@ use super::gpu::GpuSelection;
 pub(crate) struct Job {
     /// Job ID
     pub(crate) id: usize,
+    /// Optional job name.
+    pub(crate) name: Option<String>,
     /// Job status
     pub(crate) status: JobStatus,
     /// Owning user UID.
@@ -89,6 +91,7 @@ impl Job {
             .name;
         Ok(Job {
             id,
+            name: req.name,
             status: JobStatus::Pending,
             uid: caller,
             username,
@@ -181,6 +184,8 @@ pub(crate) struct JobRequest {
     pub(crate) envs: HashMap<String, String>,
     /// Log file path
     pub(crate) log_path: Option<String>,
+    /// Optional job name.
+    pub(crate) name: Option<String>,
     /// Working directory at submission time
     pub(crate) cwd: String,
 }
@@ -190,6 +195,8 @@ pub(crate) struct JobRequest {
 pub(crate) struct JobPrintInfo {
     /// Job ID
     pub(crate) id: usize,
+    /// Optional job name.
+    pub(crate) name: Option<String>,
     /// Job status
     pub(crate) status: JobStatus,
     /// Submitting user
@@ -217,6 +224,8 @@ pub(crate) struct JobPrintInfo {
 pub(crate) struct JobInfo {
     /// Job ID.
     pub(crate) id: usize,
+    /// Optional job name.
+    pub(crate) name: Option<String>,
     /// Job status.
     pub(crate) status: JobStatus,
     /// Submitting user.
@@ -259,6 +268,7 @@ impl JobInfo {
     pub(crate) fn from_job(job: Job, dependencies: Vec<usize>) -> Self {
         Self {
             id: job.id,
+            name: job.name,
             status: job.status,
             username: job.username,
             command: job.command,

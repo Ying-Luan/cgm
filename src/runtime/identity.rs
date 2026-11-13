@@ -87,7 +87,10 @@ mod tests {
     #[test]
     fn foreign_business_requests_are_still_rejected() {
         let result = authorize(
-            &Request::List { limit: None },
+            &Request::List {
+                limit: None,
+                name: None,
+            },
             Uid::from_raw(12346),
             Uid::from_raw(12345),
         );

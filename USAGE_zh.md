@@ -73,6 +73,7 @@ cgm submit [OPTIONS] -- <COMMAND>
 | `--follow` | ` ` | `true` | 任务提交后打开 `less`，阻塞终端 | `submit.detach` |
 | `--id` | ` ` | `false` | 只输出新任务 ID 并立即返回 | ` ` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | 指定日志文件路径 | ` ` |
+| `--name <NAME>` | ` ` | ` ` | 可选任务名称 | ` ` |
 | `--require-gpus <N>` | `-g <N>` | `1` | 指定申请的 GPU 数量；`0` 表示不申请 GPU | `submit.required_gpus` |
 
 ### 示例
@@ -118,6 +119,7 @@ cgm rerun <JOB_ID> [OPTIONS]
 | `--follow` | ` ` | `true` | 任务提交后打开 `less`，阻塞终端 | `rerun.detach` |
 | `--id` | ` ` | `false` | 只输出新任务 ID 并立即返回 | ` ` |
 | `--log <PATH>` | `-l <PATH>` | ` ` | 指定新任务日志路径 | ` ` |
+| `--name <NAME>` | ` ` | ` ` | 覆盖源任务名称 | ` ` |
 | `--require-gpus <N>` | `-g <N>` | ` ` | 覆盖新任务申请的 GPU 数量；`0` 表示不申请 | ` ` |
 
 重新运行会保留源任务允许使用的 GPU ID，但不会继承源任务依赖。
@@ -166,6 +168,7 @@ cgm list [OPTIONS]
 | `--all` | `-a` | `false` | 显示全部任务 | ` ` |
 | `--limit <N>` | ` ` | `20` | 显示最新的 N 条任务 | `list.limit` |
 | `--long-format` | `-l` | `false` | 显示完整字段名和完整命令 | ` ` |
+| `--name <NAME>` | ` ` | ` ` | 按任务名称的字面子串过滤，区分大小写 | ` ` |
 
 `--all` 与 `--limit` 互斥，只能指定其一。
 

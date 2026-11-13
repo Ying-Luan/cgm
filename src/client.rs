@@ -120,6 +120,7 @@ pub(crate) fn submit_job(request: JobRequest) -> Result<JobInfo, String> {
 /// # Arguments
 ///
 /// * `id` - Source job ID
+/// * `name` - Optional job name override
 /// * `context` - Current terminal values overriding the saved context
 /// * `allowed_gpus` - Optional allowed GPU ID override
 /// * `dependencies` - Optional dependency override
@@ -132,6 +133,7 @@ pub(crate) fn submit_job(request: JobRequest) -> Result<JobInfo, String> {
 /// * `String` - Error message on failure
 pub(crate) fn rerun_job(
     id: usize,
+    name: Option<String>,
     context: RerunContext,
     allowed_gpus: Option<GpuSelection>,
     dependencies: Option<Vec<usize>>,
@@ -140,6 +142,7 @@ pub(crate) fn rerun_job(
 ) -> Result<JobInfo, String> {
     match send_request(&Request::Rerun {
         id,
+        name,
         context,
         allowed_gpus,
         dependencies,
@@ -208,13 +211,17 @@ pub(crate) fn query_gpu_status() -> Result<(Vec<GpuInfo>, DaemonInfo), String> {
 /// # Arguments
 ///
 /// * `limit` - Limit number of jobs returned, None for all
+/// * `name` - Optional name substring filter
 ///
 /// # Returns
 ///
 /// * `(Vec<JobPrintInfo>, usize)` - Job info list and total count
 /// * `String` - Error message
-pub(crate) fn list_jobs(limit: Option<usize>) -> Result<(Vec<JobPrintInfo>, usize), String> {
-    match send_request(&Request::List { limit })? {
+pub(crate) fn list_jobs(
+    limit: Option<usize>,
+    name: Option<String>,
+) -> Result<(Vec<JobPrintInfo>, usize), String> {
+    match send_request(&Request::List { limit, name })? {
         Response::List { jobs, total } => Ok((jobs, total)),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),

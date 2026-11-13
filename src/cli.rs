@@ -141,6 +141,13 @@ enum Commands {
         /// Log file path
         #[arg(short, long, help = "Log file path")]
         log: Option<String>,
+        /// Optional job name
+        #[arg(
+            long,
+            value_parser = utils::parse_job_name,
+            help = "Optional job name"
+        )]
+        name: Option<String>,
         /// Print only the new job ID
         #[arg(
             long = "id",
@@ -210,6 +217,13 @@ enum Commands {
         /// Set the new job's log path
         #[arg(short, long, help = "Set the new job's log path")]
         log: Option<String>,
+        /// Override the job name
+        #[arg(
+            long,
+            value_parser = utils::parse_job_name,
+            help = "Override the job name"
+        )]
+        name: Option<String>,
         /// Print only the new job ID
         #[arg(
             long = "id",
@@ -291,6 +305,13 @@ enum Commands {
             help = "Show detailed field names and full commands"
         )]
         long_format: bool,
+        /// Filter by a case-sensitive name substring
+        #[arg(
+            long,
+            value_parser = utils::parse_name_filter,
+            help = "Filter by a case-sensitive name substring"
+        )]
+        name: Option<String>,
     },
     /// View complete job information
     Info {
@@ -350,6 +371,7 @@ pub(crate) fn run() {
             detach,
             follow,
             log,
+            name,
             print_id,
             require_gpus,
         } => submit::run(
@@ -359,6 +381,7 @@ pub(crate) fn run() {
             detach,
             follow,
             log,
+            name,
             print_id,
             require_gpus,
         ),
@@ -370,6 +393,7 @@ pub(crate) fn run() {
             detach,
             follow,
             log,
+            name,
             print_id,
             require_gpus,
         } => rerun::run(
@@ -380,6 +404,7 @@ pub(crate) fn run() {
             detach,
             follow,
             log,
+            name,
             print_id,
             require_gpus,
         ),
@@ -390,7 +415,8 @@ pub(crate) fn run() {
             all,
             limit,
             long_format,
-        } => list::run(all, limit, long_format),
+            name,
+        } => list::run(all, limit, long_format, name),
         Commands::Info { id, env } => info::run(id, env),
         Commands::Log { id } => log::run(id),
         Commands::Config { system, command } => config::run(system, command),
@@ -401,7 +427,36 @@ pub(crate) fn run() {
 mod tests {
     use clap::Parser;
 
-    use super::{Cli, Commands};
+    use super::{Cli, Commands, utils::MAX_JOB_NAME_LENGTH};
+
+    #[test]
+    fn job_names_are_normalized_and_validated_by_cli() {
+        let cli =
+            Cli::try_parse_from(["cgm", "submit", "--name", "  训练  ", "--", "true"]).unwrap();
+        assert!(matches!(cli.command, Commands::Submit { name: Some(name), .. } if name == "训练"));
+        let cli = Cli::try_parse_from(["cgm", "rerun", "1", "--name", "  run  "]).unwrap();
+        assert!(matches!(cli.command, Commands::Rerun { name: Some(name), .. } if name == "run"));
+        let cli = Cli::try_parse_from(["cgm", "list", "--name", "  train  "]).unwrap();
+        assert!(matches!(cli.command, Commands::List { name: Some(name), .. } if name == "train"));
+        for name in [
+            "   ".to_string(),
+            "a\nb".to_string(),
+            "中".repeat(MAX_JOB_NAME_LENGTH + 1),
+        ] {
+            assert!(Cli::try_parse_from(["cgm", "submit", "--name", &name, "--", "true"]).is_err());
+        }
+        assert!(
+            Cli::try_parse_from([
+                "cgm",
+                "rerun",
+                "1",
+                "--name",
+                &"中".repeat(MAX_JOB_NAME_LENGTH)
+            ])
+            .is_ok()
+        );
+        assert!(Cli::try_parse_from(["cgm", "list", "--name", "  "]).is_err());
+    }
 
     #[test]
     fn start_requires_exactly_one_mode() {
@@ -507,6 +562,7 @@ mod tests {
             all,
             limit,
             long_format,
+            ..
         } = cli.command
         else {
             panic!("expected list command");

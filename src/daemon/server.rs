@@ -192,6 +192,7 @@ impl Server {
             Request::Submit { job } => self.handle_submit(job, caller),
             Request::Rerun {
                 id,
+                name,
                 context,
                 allowed_gpus,
                 dependencies,
@@ -199,6 +200,7 @@ impl Server {
                 log_path,
             } => self.handle_rerun(
                 id,
+                name,
                 context,
                 allowed_gpus,
                 dependencies,
@@ -209,7 +211,7 @@ impl Server {
             Request::Cancel { id, force } => self.handle_cancel(id, caller, force),
             Request::Delete { target } => self.handle_delete(target),
             Request::Status => self.handle_status(),
-            Request::List { limit } => self.handle_list(caller, limit),
+            Request::List { limit, name } => self.handle_list(caller, limit, name),
             Request::Info { id } => self.handle_info(id, caller),
             Request::Log { id } => self.handle_log(id, caller),
         }
@@ -257,6 +259,7 @@ impl Server {
     /// # Arguments
     ///
     /// * `id` - Source job ID
+    /// * `name` - Optional job name override
     /// * `context` - Current terminal values overriding the saved context
     /// * `allowed_gpus` - Optional allowed GPU ID override
     /// * `dependencies` - Optional dependency override
@@ -270,6 +273,7 @@ impl Server {
     fn handle_rerun(
         &self,
         id: usize,
+        name: Option<String>,
         context: RerunContext,
         allowed_gpus: Option<GpuSelection>,
         dependencies: Option<Vec<usize>>,
@@ -295,6 +299,7 @@ impl Server {
             required_gpus: required_gpus.unwrap_or(job.required_gpus),
             envs: context.envs.unwrap_or(job.envs),
             log_path,
+            name: name.or(job.name),
             cwd: context.cwd.unwrap_or(job.cwd),
         };
 
@@ -587,23 +592,45 @@ impl Server {
     ///
     /// * `caller` - Authenticated caller UID (root sees all)
     /// * `limit` - Limit number of jobs returned, None for all
+    /// * `name` - Optional name substring filter
     ///
     /// # Returns
     ///
     /// Jobs filtered by owner UID. Root user sees all jobs.
-    fn handle_list(&self, caller: Uid, limit: Option<usize>) -> Response {
+    fn handle_list(&self, caller: Uid, limit: Option<usize>, name: Option<String>) -> Response {
         let (dependencies, total, jobs) = {
             let q = self.queue.lock().unwrap();
 
-            let total = q.get_job_count().unwrap_or(0) as usize;
-            let jobs = if caller.is_root() {
-                q.get_all_jobs(limit).unwrap_or_default()
-            } else {
-                q.get_jobs_by_uid(caller, limit).unwrap_or_default()
+            let total = match q.get_job_count() {
+                Ok(total) => total as usize,
+                Err(error) => {
+                    return Response::Error {
+                        message: format!("Failed to count jobs: {error}"),
+                    };
+                }
+            };
+            let jobs = match q.get_jobs(
+                (!caller.is_root()).then_some(caller),
+                name.as_deref(),
+                limit,
+            ) {
+                Ok(jobs) => jobs,
+                Err(error) => {
+                    return Response::Error {
+                        message: format!("Failed to query jobs: {error}"),
+                    };
+                }
             };
 
             let job_ids = jobs.iter().map(|job| job.id).collect::<Vec<_>>();
-            let dependencies = q.get_dependencies_by_job_ids(&job_ids).unwrap_or_default();
+            let dependencies = match q.get_dependencies_by_job_ids(&job_ids) {
+                Ok(dependencies) => dependencies,
+                Err(error) => {
+                    return Response::Error {
+                        message: format!("Failed to read job dependencies: {error}"),
+                    };
+                }
+            };
 
             (dependencies, total, jobs)
         };
@@ -612,6 +639,7 @@ impl Server {
             .into_iter()
             .map(|j| JobPrintInfo {
                 id: j.id,
+                name: j.name,
                 status: j.status,
                 username: j.username,
                 command: j.command,

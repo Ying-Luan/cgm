@@ -200,6 +200,7 @@ pub(crate) fn show_job_info(job: &JobInfo, show_env: bool) {
     };
     println!("--- Job Info ---");
     println!("{:<24}{}", "ID:", job.id);
+    println!("{:<24}{}", "Name:", job.name.as_deref().unwrap_or("-"));
     println!("{:<24}{}", "Status:", job.status.as_str());
     println!("{:<24}{}", "Username:", job.username);
     println!("{:<24}{}", "Command:", job.command.join(" "));
@@ -273,6 +274,7 @@ pub(crate) fn show_list(jobs: &[JobPrintInfo], total: usize, long_format: bool) 
     let headers = if long_format {
         vec![
             "ID",
+            "Name",
             "Status",
             "User",
             "Required GPUs",
@@ -287,6 +289,7 @@ pub(crate) fn show_list(jobs: &[JobPrintInfo], total: usize, long_format: bool) 
     } else {
         vec![
             "ID",
+            "Name",
             "Status",
             "User",
             "Req GPU",
@@ -302,6 +305,7 @@ pub(crate) fn show_list(jobs: &[JobPrintInfo], total: usize, long_format: bool) 
     table.load_preset(NOTHING).set_header(headers);
 
     for job in jobs {
+        let name = job.name.as_deref().unwrap_or("-");
         let allowed_gpus = job.allowed_gpus.to_string();
         let allocated_gpus = job
             .allocated_gpus
@@ -340,6 +344,7 @@ pub(crate) fn show_list(jobs: &[JobPrintInfo], total: usize, long_format: bool) 
         };
         table.add_row(vec![
             Cell::new(job.id.to_string()),
+            Cell::new(name),
             Cell::new(job.status.as_str()).fg(job.status.color()),
             Cell::new(&job.username),
             Cell::new(job.required_gpus.to_string()),
