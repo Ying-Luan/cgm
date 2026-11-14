@@ -27,6 +27,8 @@ pub(crate) struct Config {
 #[derive(Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct ListConfig {
+    /// Maximum command length in compact output.
+    pub(crate) command_length: Option<usize>,
     /// Maximum number of jobs to display.
     pub(crate) limit: Option<usize>,
 }
@@ -107,13 +109,19 @@ impl Config {
         effective: &mut EffectiveConfig,
         source: Source,
     ) -> Result<(), String> {
-        if let Some(list) = &self.list
-            && let Some(limit) = list.limit
-        {
-            effective.list.limit = WithSource {
-                value: limit,
-                source,
-            };
+        if let Some(list) = &self.list {
+            if let Some(command_length) = list.command_length {
+                effective.list.command_length = WithSource {
+                    value: command_length,
+                    source,
+                };
+            }
+            if let Some(limit) = list.limit {
+                effective.list.limit = WithSource {
+                    value: limit,
+                    source,
+                };
+            }
         }
         if let Some(rerun) = &self.rerun
             && let Some(detach) = rerun.detach
@@ -178,6 +186,7 @@ impl From<&EffectiveConfig> for Config {
     fn from(effective: &EffectiveConfig) -> Self {
         Self {
             list: Some(ListConfig {
+                command_length: Some(effective.list.command_length.value),
                 limit: Some(effective.list.limit.value),
             }),
             rerun: Some(RerunConfig {
@@ -250,6 +259,8 @@ pub(crate) struct EffectiveConfig {
 /// Fully resolved job list defaults.
 #[derive(Debug, PartialEq)]
 pub(crate) struct EffectiveListConfig {
+    /// Maximum command length in compact output.
+    pub(crate) command_length: WithSource<usize>,
     /// Maximum number of jobs to display.
     pub(crate) limit: WithSource<usize>,
 }
@@ -289,6 +300,7 @@ impl Default for EffectiveConfig {
     fn default() -> Self {
         Self {
             list: EffectiveListConfig {
+                command_length: WithSource::builtin(32),
                 limit: WithSource::builtin(20),
             },
             rerun: EffectiveRerunConfig {

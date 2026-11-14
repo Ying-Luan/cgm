@@ -16,17 +16,25 @@ use super::utils::{exit_with_error, require_daemon};
 /// # Arguments
 ///
 /// * `all` - If true, show all jobs without limit
+/// * `command_length` - Maximum command length in compact output
 /// * `limit` - Optional maximum number of jobs to show
 /// * `long_format` - If true, show the detailed table with full field names and commands
 /// * `name` - Optional name substring filter
-pub(super) fn run(all: bool, limit: Option<usize>, long_format: bool, name: Option<String>) {
+pub(super) fn run(
+    all: bool,
+    command_length: Option<usize>,
+    limit: Option<usize>,
+    long_format: bool,
+    name: Option<String>,
+) {
     require_daemon();
 
-    let config = merge_config(limit).unwrap_or_else(|error| exit_with_error(&error));
+    let config =
+        merge_config(command_length, limit).unwrap_or_else(|error| exit_with_error(&error));
 
     let limit_param = if all { None } else { Some(config.limit.value) };
     match list_jobs(limit_param, name) {
-        Ok((jobs, total)) => show_list(&jobs, total, long_format),
+        Ok((jobs, total)) => show_list(&jobs, total, long_format, config.command_length.value),
         Err(error) => exit_with_error(&error),
     }
 }
@@ -35,13 +43,20 @@ pub(super) fn run(all: bool, limit: Option<usize>, long_format: bool, name: Opti
 ///
 /// # Arguments
 ///
+/// * `command_length` - Maximum command length in compact output
 /// * `limit` - Optional maximum number of jobs to show
 ///
 /// # Returns
 ///
 /// The effective list configuration, or an error message.
-fn merge_config(limit: Option<usize>) -> Result<EffectiveListConfig, String> {
+fn merge_config(
+    command_length: Option<usize>,
+    limit: Option<usize>,
+) -> Result<EffectiveListConfig, String> {
     let mut config = load_effective()?;
+    if let Some(command_length) = command_length {
+        config.list.command_length.value = command_length;
+    }
     if let Some(limit) = limit {
         config.list.limit.value = limit;
     }

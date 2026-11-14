@@ -13,9 +13,6 @@ use crate::{
     types::{JobInfo, JobPrintInfo},
 };
 
-/// Maximum command length shown in the compact job list.
-const COMMAND_PREVIEW_LENGTH: usize = 32;
-
 /// Format Unix timestamp to YYYY-MM-DD HH:MM:SS string
 ///
 /// # Arguments
@@ -70,17 +67,18 @@ fn calculate_duration(start: Option<i64>, end: Option<i64>) -> String {
 /// # Arguments
 ///
 /// * `command` - The command string to truncate.
+/// * `max_length` - Maximum number of characters, including the ellipsis.
 ///
 /// # Returns
 ///
 /// The original command if it fits within the preview limit; otherwise, a
 /// shortened command ending with `...`.
-fn truncate_command(mut command: String) -> String {
-    if command.chars().count() <= COMMAND_PREVIEW_LENGTH {
+fn truncate_command(mut command: String, max_length: usize) -> String {
+    if command.chars().count() <= max_length {
         return command;
     }
 
-    let prefix_length = COMMAND_PREVIEW_LENGTH.saturating_sub(3);
+    let prefix_length = max_length - 3;
     let prefix_end = command
         .char_indices()
         .nth(prefix_length)
@@ -279,7 +277,13 @@ pub(crate) fn show_job_info(job: &JobInfo, show_env: bool) {
 /// * `jobs` - Jobs to display in the supplied order
 /// * `total` - Total job count reported by the daemon
 /// * `long_format` - Show detailed field names and full commands
-pub(crate) fn show_list(jobs: &[JobPrintInfo], total: usize, long_format: bool) {
+/// * `command_length` - Maximum command length in compact output
+pub(crate) fn show_list(
+    jobs: &[JobPrintInfo],
+    total: usize,
+    long_format: bool,
+    command_length: usize,
+) {
     println!("--- Jobs ({}/{}) ---", jobs.len(), total);
     if jobs.is_empty() {
         println!("{}", yellow!("(no jobs)"));
@@ -356,7 +360,7 @@ pub(crate) fn show_list(jobs: &[JobPrintInfo], total: usize, long_format: bool) 
         let command = if long_format {
             command
         } else {
-            truncate_command(command)
+            truncate_command(command, command_length)
         };
         table.add_row(vec![
             Cell::new(job.id.to_string()),
@@ -379,22 +383,22 @@ pub(crate) fn show_list(jobs: &[JobPrintInfo], total: usize, long_format: bool) 
 
 #[cfg(test)]
 mod tests {
-    use super::{COMMAND_PREVIEW_LENGTH, truncate_command};
+    use super::truncate_command;
 
     #[test]
     fn keeps_short_commands_unchanged() {
         assert_eq!(
-            truncate_command("python train.py".to_string()),
+            truncate_command("python train.py".to_string(), 32),
             "python train.py"
         );
     }
 
     #[test]
     fn truncates_long_commands_with_an_ellipsis() {
-        let command = "x".repeat(COMMAND_PREVIEW_LENGTH + 1);
-        let truncated = truncate_command(command);
+        let command = "x".repeat(33);
+        let truncated = truncate_command(command, 32);
 
-        assert_eq!(truncated.chars().count(), COMMAND_PREVIEW_LENGTH);
+        assert_eq!(truncated.chars().count(), 32);
         assert!(truncated.ends_with("..."));
     }
 }

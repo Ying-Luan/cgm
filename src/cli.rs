@@ -290,6 +290,14 @@ enum Commands {
             conflicts_with = "limit"
         )]
         all: bool,
+        /// Maximum command length in compact output
+        #[arg(
+            long,
+            value_name = "N",
+            help = "Maximum command length in compact output; must be greater than 3",
+            conflicts_with = "long_format"
+        )]
+        command_length: Option<usize>,
         /// Show the latest N jobs
         #[arg(
             long,
@@ -413,10 +421,11 @@ pub(crate) fn run() {
         Commands::Status { quiet } => status::run(quiet),
         Commands::List {
             all,
+            command_length,
             limit,
             long_format,
             name,
-        } => list::run(all, limit, long_format, name),
+        } => list::run(all, command_length, limit, long_format, name),
         Commands::Info { id, env } => info::run(id, env),
         Commands::Log { id } => log::run(id),
         Commands::Config { system, command } => config::run(system, command),
@@ -571,6 +580,19 @@ mod tests {
         assert!(!all);
         assert_eq!(limit, Some(10));
         assert!(long_format);
+    }
+
+    #[test]
+    fn list_command_length_conflicts_with_long_format() {
+        let cli = Cli::try_parse_from(["cgm", "list", "--command-length", "4"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::List {
+                command_length: Some(4),
+                ..
+            }
+        ));
+        assert!(Cli::try_parse_from(["cgm", "list", "--command-length", "16", "-l"]).is_err());
     }
 
     #[test]

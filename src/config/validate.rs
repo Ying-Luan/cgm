@@ -15,6 +15,9 @@ use crate::{
 ///
 /// Whether the effective configuration is valid or not.
 pub(crate) fn validate_effective(config: &EffectiveConfig) -> Result<(), String> {
+    if config.list.command_length.value <= 3 {
+        return Err("list.command_length must be greater than 3".to_string());
+    }
     if config.list.limit.value == 0 {
         return Err("list.limit must be greater than 0".to_string());
     }
@@ -37,8 +40,15 @@ pub(crate) fn validate_effective(config: &EffectiveConfig) -> Result<(), String>
 ///
 /// Whether the configuration is valid or not.
 pub(super) fn validate_config(config: &Config) -> Result<(), String> {
-    if config.list.as_ref().and_then(|list| list.limit) == Some(0) {
-        return Err("list.limit must be greater than 0".to_string());
+    if let Some(list) = &config.list {
+        if let Some(command_length) = list.command_length
+            && command_length <= 3
+        {
+            return Err("list.command_length must be greater than 3".to_string());
+        }
+        if list.limit == Some(0) {
+            return Err("list.limit must be greater than 0".to_string());
+        }
     }
     if let Some(start) = &config.start {
         if let Some(gpus) = &start.gpus {

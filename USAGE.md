@@ -166,6 +166,7 @@ cgm list [OPTIONS]
 | Option | Short | Default | Description | Config Key |
 | ------ | ----- | ------- | ----------- | --- |
 | `--all` | `-a` | `false` | Show all jobs | ` ` |
+| `--command-length <N>` | ` ` | `32` | Maximum command length in compact output; must be greater than 3 | `list.command_length` |
 | `--limit <N>` | ` ` | `20` | Show the latest N jobs | `list.limit` |
 | `--long-format` | `-l` | `false` | Show complete field names and complete commands | ` ` |
 | `--name <NAME>` | ` ` | ` ` | Filter by a case-sensitive literal substring of the job name | ` ` |

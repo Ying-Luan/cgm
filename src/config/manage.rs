@@ -25,6 +25,8 @@ use super::{
 /// Supported configuration keys.
 #[derive(Clone, Copy)]
 enum ConfigKey {
+    /// `list.command_length`.
+    ListCommandLength,
     /// `list.limit`.
     ListLimit,
     /// `rerun.detach`.
@@ -47,7 +49,8 @@ enum ConfigKey {
 
 impl ConfigKey {
     /// All known configuration keys in display order.
-    const ALL: [ConfigKey; 9] = [
+    const ALL: [ConfigKey; 10] = [
+        ConfigKey::ListCommandLength,
         ConfigKey::ListLimit,
         ConfigKey::RerunDetach,
         ConfigKey::StartGpus,
@@ -66,6 +69,7 @@ impl ConfigKey {
     /// (section, field, key_string)
     fn names(&self) -> (&'static str, &'static str, &'static str) {
         match self {
+            Self::ListCommandLength => ("list", "command_length", "list.command_length"),
             Self::ListLimit => ("list", "limit", "list.limit"),
             Self::RerunDetach => ("rerun", "detach", "rerun.detach"),
             Self::StartGpus => ("start", "gpus", "start.gpus"),
@@ -102,7 +106,7 @@ impl ConfigKey {
             .and_then(Item::as_value)
             .map(|value| value.decor().clone());
         let mut item = match self {
-            Self::ListLimit | Self::SubmitRequiredGpus => {
+            Self::ListCommandLength | Self::ListLimit | Self::SubmitRequiredGpus => {
                 let parsed = raw_value
                     .parse::<usize>()
                     .map_err(|_| format!("{}.{} must be a positive integer", section, field))?;
@@ -150,6 +154,7 @@ impl ConfigKey {
     /// The value and source of the configuration key.
     fn get(&self, config: &EffectiveConfig) -> (String, Source) {
         match self {
+            Self::ListCommandLength => config.list.command_length.value_and_source(),
             Self::ListLimit => config.list.limit.value_and_source(),
             Self::RerunDetach => config.rerun.detach.value_and_source(),
             Self::StartGpus => config.start.gpus.value_and_source(),
@@ -173,6 +178,7 @@ impl ConfigKey {
     /// The value of the configuration key, or `None` if not set.
     fn raw_value(&self, config: &Config) -> Option<String> {
         match self {
+            Self::ListCommandLength => config.list.as_ref()?.command_length.map(|v| v.to_string()),
             Self::ListLimit => config.list.as_ref()?.limit.map(|v| v.to_string()),
             Self::RerunDetach => config.rerun.as_ref()?.detach.map(|v| v.to_string()),
             Self::StartGpus => config.start.as_ref()?.gpus.clone(),
@@ -193,6 +199,7 @@ impl FromStr for ConfigKey {
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
         match key {
+            "list.command_length" => Ok(Self::ListCommandLength),
             "list.limit" => Ok(Self::ListLimit),
             "rerun.detach" => Ok(Self::RerunDetach),
             "start.gpus" => Ok(Self::StartGpus),
