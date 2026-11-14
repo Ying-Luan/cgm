@@ -120,6 +120,10 @@ impl Runtime {
             version: env!("CARGO_PKG_VERSION").into(),
             executable: self.executable.clone(),
             root: self.paths.root.clone(),
+            db: self.paths.db.clone(),
+            stdout: self.paths.stdout.clone(),
+            stderr: self.paths.stderr.clone(),
+            job_logs: self.paths.job_logs.clone(),
         }
     }
 }

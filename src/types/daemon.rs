@@ -59,4 +59,12 @@ pub(crate) struct DaemonInfo {
     pub(crate) executable: PathBuf,
     /// Persistent data directory.
     pub(crate) root: PathBuf,
+    /// SQLite database file.
+    pub(crate) db: PathBuf,
+    /// Daemon standard output file.
+    pub(crate) stdout: PathBuf,
+    /// Daemon standard error file.
+    pub(crate) stderr: PathBuf,
+    /// Default job log directory.
+    pub(crate) job_logs: PathBuf,
 }

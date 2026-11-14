@@ -101,30 +101,46 @@ fn truncate_command(mut command: String) -> String {
 pub(crate) fn show_status() -> Result<(), String> {
     // Display daemon status
     println!("--- CGM Status ---");
-    let gpus_status = match client::query_gpu_status() {
-        Ok((gpus, daemon)) => {
-            println!("Daemon: {}", green!("{}", daemon.state));
-            println!("Mode: {}", daemon.mode);
-            println!(
-                "Owner: {} (UID {})",
-                daemon.owner_name.escape_debug(),
-                daemon.owner_uid
-            );
-            println!("PID: {}", daemon.pid);
-            println!("Version: {}", daemon.version.escape_debug());
-            println!(
-                "Executable: {}",
-                daemon.executable.display().to_string().escape_debug()
-            );
-            println!(
-                "Data Directory: {}",
-                daemon.root.display().to_string().escape_debug()
-            );
-            gpus
-        }
+
+    let (gpus_status, daemon) = match client::query_gpu_status() {
+        Ok(result) => result,
         Err(_) if !socket::occupied() => return Err("Daemon is not running".into()),
         Err(error) => return Err(error),
     };
+
+    println!("Daemon: {}", green!("{}", daemon.state));
+    println!("Mode: {}", daemon.mode);
+    println!(
+        "Owner: {} (UID {})",
+        daemon.owner_name.escape_debug(),
+        daemon.owner_uid
+    );
+    println!("PID: {}", daemon.pid);
+    println!("Version: {}", daemon.version.escape_debug());
+    println!(
+        "Executable: {}",
+        daemon.executable.display().to_string().escape_debug()
+    );
+    println!(
+        "Data Directory: {}",
+        daemon.root.display().to_string().escape_debug()
+    );
+    println!(
+        "Database: {}",
+        daemon.db.display().to_string().escape_debug()
+    );
+    println!(
+        "Daemon Output: {}",
+        daemon.stdout.display().to_string().escape_debug()
+    );
+    println!(
+        "Daemon Error: {}",
+        daemon.stderr.display().to_string().escape_debug()
+    );
+    println!(
+        "Job Log Directory: {}",
+        daemon.job_logs.display().to_string().escape_debug()
+    );
 
     // Display GPU info
     println!("\n--- GPU Info ---");
