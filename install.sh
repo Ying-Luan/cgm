@@ -114,3 +114,12 @@ else
 fi
 
 printf 'Installed %s to %s\n' "$("$install_path" --version)" "$install_path"
+
+case ":${PATH:-}:" in
+    *":$INSTALL_DIR:"*) ;;
+    *)
+        printf 'Warning: %s is not in PATH. Add it for this session:\n' "$INSTALL_DIR" >&2
+        printf '  export PATH=%q:$PATH\n' "$INSTALL_DIR" >&2
+        printf 'For future sessions, add it to your shell configuration.\n' >&2
+        ;;
+esac
