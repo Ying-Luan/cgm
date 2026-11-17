@@ -15,6 +15,6 @@ pub(crate) use config::{
 };
 pub(crate) use daemon::{DaemonInfo, DaemonMode, DaemonState};
 pub(crate) use gpu::{GpuInfo, GpuPrintInfo, GpuSelection, GpuState};
-pub(crate) use ipc::{DeleteTarget, Request, RerunContext, Response};
+pub(crate) use ipc::{DeleteTarget, Envelope, Request, RerunContext, Response};
 pub(crate) use job::{Job, JobInfo, JobPrintInfo, JobRequest, JobStatus};
 pub(crate) use scheduler::SchedulerKind;

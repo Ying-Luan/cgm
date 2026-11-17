@@ -2,15 +2,18 @@
 //!
 //! Communicate with daemon via Unix Domain Socket, submit jobs and query GPU status.
 
-use std::{io::Write, time::Duration};
+use std::{
+    io::{Read, Write},
+    time::Duration,
+};
 
 use nix::unistd::Uid;
 
 use crate::{
     runtime::{connection_uid, socket},
     types::{
-        DaemonInfo, DeleteTarget, GpuInfo, GpuSelection, JobInfo, JobPrintInfo, JobRequest,
-        Request, RerunContext, Response,
+        DaemonInfo, DeleteTarget, Envelope, GpuInfo, GpuSelection, JobInfo, JobPrintInfo,
+        JobRequest, Request, RerunContext, Response,
     },
 };
 
@@ -24,24 +27,28 @@ use crate::{
 ///
 /// * `Response` - Daemon response
 /// * `String` - Error message
-fn send_request(request: &Request) -> Result<Response, String> {
-    let json = serde_json::to_string(request)
-        .map_err(|e| format!("Failed to serialize request: {}", e))?;
+fn send_request(request: Request) -> Result<Response, String> {
+    let envelope = Envelope::new(request);
+    let json = serde_json::to_string(&envelope)
+        .map_err(|error| format!("Failed to serialize request: {error}"))?;
 
     // Root may manage a personal daemon with Stop.
     // All other business requests still require a trusted daemon owner.
-    let mut stream = if matches!(request, Request::Status)
-        || (matches!(request, Request::Stop { .. }) && Uid::effective().is_root())
+    let mut stream = if matches!(envelope.payload, Request::Status)
+        || (matches!(envelope.payload, Request::Stop { .. }) && Uid::effective().is_root())
     {
         socket::connect_status()
     } else {
         socket::connect()
     }
-    .map_err(|error| format!("Failed to connect to daemon: {}", error))?;
+    .map_err(|error| format!("Failed to connect to daemon: {error}"))?;
     let owner = connection_uid(&stream).map_err(|error| error.to_string())?;
     stream
         .set_read_timeout(Some(Duration::from_secs(
-            if matches!(request, Request::Stop { .. } | Request::Cancel { .. }) {
+            if matches!(
+                envelope.payload,
+                Request::Stop { .. } | Request::Cancel { .. }
+            ) {
                 35
             } else {
                 10
@@ -53,11 +60,14 @@ fn send_request(request: &Request) -> Result<Response, String> {
         .map_err(|error| error.to_string())?;
     stream
         .write_all(json.as_bytes())
-        .map_err(|error| format!("Failed to send request: {}", error))?;
+        .map_err(|error| format!("Failed to send request: {error}"))?;
     stream.shutdown(std::net::Shutdown::Write).ok();
 
-    let response: Response = serde_json::from_reader(&stream)
-        .map_err(|error| format!("Failed to receive response: {}", error))?;
+    let mut buffer = String::new();
+    stream
+        .read_to_string(&mut buffer)
+        .map_err(|error| format!("Failed to receive response: {error}"))?;
+    let response = Envelope::<Response>::parse(&buffer)?;
     if let Response::Status { daemon, .. } = &response
         && daemon.owner_uid != owner.as_raw()
     {
@@ -77,7 +87,7 @@ fn send_request(request: &Request) -> Result<Response, String> {
 ///
 /// Success after cleanup and release of the daemon socket, or an error.
 pub(crate) fn stop(force: bool) -> Result<(), String> {
-    match send_request(&Request::Stop { force })? {
+    match send_request(Request::Stop { force })? {
         Response::Stop => {
             let deadline = std::time::Instant::now() + Duration::from_secs(5);
             loop {
@@ -108,7 +118,7 @@ pub(crate) fn stop(force: bool) -> Result<(), String> {
 /// * `JobInfo` - Persisted details of the submitted job on success
 /// * `String` - Error message on failure
 pub(crate) fn submit_job(request: JobRequest) -> Result<JobInfo, String> {
-    match send_request(&Request::Submit { job: request })? {
+    match send_request(Request::Submit { job: request })? {
         Response::Submit { job } => Ok(*job),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
@@ -140,7 +150,7 @@ pub(crate) fn rerun_job(
     required_gpus: Option<usize>,
     log_path: Option<String>,
 ) -> Result<JobInfo, String> {
-    match send_request(&Request::Rerun {
+    match send_request(Request::Rerun {
         id,
         name,
         context,
@@ -167,7 +177,7 @@ pub(crate) fn rerun_job(
 /// * `()` - Success
 /// * `String` - Error message
 pub(crate) fn cancel_job(id: usize, force: bool) -> Result<(), String> {
-    match send_request(&Request::Cancel { id, force })? {
+    match send_request(Request::Cancel { id, force })? {
         Response::Cancel => Ok(()),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
@@ -185,7 +195,7 @@ pub(crate) fn cancel_job(id: usize, force: bool) -> Result<(), String> {
 /// * `usize` - Number of jobs deleted
 /// * `String` - Error message
 pub(crate) fn delete_job(target: DeleteTarget) -> Result<usize, String> {
-    match send_request(&Request::Delete { target })? {
+    match send_request(Request::Delete { target })? {
         Response::Delete { count } => Ok(count),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
@@ -199,7 +209,7 @@ pub(crate) fn delete_job(target: DeleteTarget) -> Result<usize, String> {
 /// * `Vec<GpuInfo>` - GPU info list
 /// * `String` - Error message
 pub(crate) fn query_gpu_status() -> Result<(Vec<GpuInfo>, DaemonInfo), String> {
-    match send_request(&Request::Status)? {
+    match send_request(Request::Status)? {
         Response::Status { gpus, daemon } => Ok((gpus, daemon)),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
@@ -221,7 +231,7 @@ pub(crate) fn list_jobs(
     limit: Option<usize>,
     name: Option<String>,
 ) -> Result<(Vec<JobPrintInfo>, usize), String> {
-    match send_request(&Request::List { limit, name })? {
+    match send_request(Request::List { limit, name })? {
         Response::List { jobs, total } => Ok((jobs, total)),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
@@ -238,7 +248,7 @@ pub(crate) fn list_jobs(
 ///
 /// The saved job details, including environment variables and directory.
 pub(crate) fn get_job_info(id: usize) -> Result<JobInfo, String> {
-    match send_request(&Request::Info { id })? {
+    match send_request(Request::Info { id })? {
         Response::Info { job } => Ok(*job),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),
@@ -256,7 +266,7 @@ pub(crate) fn get_job_info(id: usize) -> Result<JobInfo, String> {
 /// * `String` - Log file path
 /// * `String` - Error message
 pub(crate) fn get_log_path(id: usize) -> Result<String, String> {
-    match send_request(&Request::Log { id })? {
+    match send_request(Request::Log { id })? {
         Response::Log { log_path } => Ok(log_path),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response from daemon".to_string()),

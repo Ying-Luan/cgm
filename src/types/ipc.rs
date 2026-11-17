@@ -4,7 +4,9 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+
+use crate::constants::PROTOCOL_VERSION;
 
 use super::{
     daemon::DaemonInfo,
@@ -146,4 +148,102 @@ pub(crate) enum Response {
         /// Error message
         message: String,
     },
+}
+
+/// Versioned socket protocol message.
+#[derive(Serialize, Deserialize)]
+pub(crate) struct Envelope<T> {
+    /// Socket protocol version.
+    version: u32,
+    /// Business payload.
+    pub(crate) payload: T,
+}
+
+impl<T> Envelope<T> {
+    /// Wrap a payload using the current protocol version.
+    ///
+    /// # Arguments
+    ///
+    /// * `payload` - The business payload to wrap.
+    ///
+    /// # Returns
+    ///
+    /// A new `Envelope` instance containing the payload and protocol version.
+    pub(crate) fn new(payload: T) -> Self {
+        Self {
+            version: PROTOCOL_VERSION,
+            payload,
+        }
+    }
+}
+
+impl<T: DeserializeOwned> Envelope<T> {
+    /// Parse a versioned message.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The JSON message to parse.
+    ///
+    /// # Returns
+    ///
+    /// The parsed payload or an error message.
+    pub(crate) fn parse(message: &str) -> Result<T, String> {
+        #[derive(Deserialize)]
+        struct Version {
+            version: u32,
+        }
+
+        let version: Version = serde_json::from_str(message)
+            .map_err(|error| format!("Invalid protocol message: {error}"))?;
+        if version.version != PROTOCOL_VERSION {
+            return Err(format!(
+                "Incompatible protocol version: expected {PROTOCOL_VERSION}, received {}",
+                version.version
+            ));
+        }
+        let envelope: Self = serde_json::from_str(message)
+            .map_err(|error| format!("Failed to parse protocol message: {error}"))?;
+
+        Ok(envelope.payload)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::constants::PROTOCOL_VERSION;
+
+    use super::{Envelope, Request, Response};
+
+    #[test]
+    fn versioned_messages_round_trip() {
+        let request = serde_json::to_string(&Envelope::new(Request::Status)).unwrap();
+        assert!(matches!(
+            Envelope::<Request>::parse(&request).unwrap(),
+            Request::Status
+        ));
+
+        let response = serde_json::to_string(&Envelope::new(Response::Stop)).unwrap();
+        assert!(matches!(
+            Envelope::<Response>::parse(&response).unwrap(),
+            Response::Stop
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_and_incompatible_messages() {
+        let incompatible = format!(
+            r#"{{"version":{},"payload":{{"unknown":true}}}}"#,
+            PROTOCOL_VERSION + 1
+        );
+        assert!(
+            Envelope::<Request>::parse(&incompatible)
+                .unwrap_err()
+                .contains("Incompatible")
+        );
+        for message in ["{", r#"{"payload":"Status"}"#, r#"{"version":"1"}"#] {
+            assert!(Envelope::<Request>::parse(message).is_err());
+        }
+        let unknown = format!(r#"{{"version":{PROTOCOL_VERSION},"payload":"Unknown"}}"#);
+        assert!(Envelope::<Request>::parse(&unknown).is_err());
+    }
 }

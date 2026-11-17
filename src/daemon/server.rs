@@ -24,7 +24,7 @@ use crate::{
     macros::{green, red},
     runtime::{Runtime, authorize, connection_uid, socket},
     types::{
-        DaemonMode, DaemonState, DeleteTarget, GpuSelection, Job, JobInfo, JobPrintInfo,
+        DaemonMode, DaemonState, DeleteTarget, Envelope, GpuSelection, Job, JobInfo, JobPrintInfo,
         JobRequest, JobStatus, Request, RerunContext, Response,
     },
 };
@@ -124,9 +124,9 @@ impl Server {
             Err(error) => {
                 let _ = serde_json::to_writer(
                     &stream,
-                    &Response::Error {
+                    &Envelope::new(Response::Error {
                         message: format!("Failed to obtain caller credentials: {}", error),
-                    },
+                    }),
                 );
                 return;
             }
@@ -135,12 +135,12 @@ impl Server {
         // Read client request
         let mut buffer = String::new();
         if let Err(error) = stream.read_to_string(&mut buffer) {
-            eprintln!("{}", red!("Failed to read request: {}", error));
+            eprintln!("{}", red!("Failed to read request: {error}"));
             return;
         }
 
         // Parse and handle request
-        let response = match serde_json::from_str::<Request>(&buffer) {
+        let response = match Envelope::<Request>::parse(&buffer) {
             Ok(req) => {
                 println!("{}", green!("Received request: {:?}", req));
                 match authorize(&req, caller, Uid::effective()) {
@@ -158,14 +158,12 @@ impl Server {
                     Err(message) => Response::Error { message },
                 }
             }
-            Err(error) => Response::Error {
-                message: format!("Failed to parse request: {}", error),
-            },
+            Err(message) => Response::Error { message },
         };
 
         // Write response back to client
-        if let Err(error) = serde_json::to_writer(&stream, &response) {
-            eprintln!("{}", red!("Failed to write response: {}", error));
+        if let Err(error) = serde_json::to_writer(&stream, &Envelope::new(response)) {
+            eprintln!("{}", red!("Failed to write response: {error}"));
         }
     }
 

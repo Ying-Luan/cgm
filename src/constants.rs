@@ -38,3 +38,6 @@ pub(crate) const INSTALL_GUIDE_URL: &str = "https://github.com/Ying-Luan/cgm#ins
 
 /// Maximum number of concurrent jobs that do not request GPUs.
 pub(crate) const MAX_CPU_JOBS: usize = 4;
+
+/// Version of the socket protocol.
+pub(crate) const PROTOCOL_VERSION: u32 = 1;
