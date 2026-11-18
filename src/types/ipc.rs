@@ -26,8 +26,8 @@ pub(crate) struct RerunContext {
 /// Delete target enum
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) enum DeleteTarget {
-    /// Delete single job by ID
-    Single(usize),
+    /// Delete jobs by ID.
+    Ids(Vec<usize>),
     /// Delete jobs by statuses
     ByStatuses(Vec<JobStatus>),
     /// Delete all terminated jobs
@@ -66,8 +66,8 @@ pub(crate) enum Request {
     },
     /// Cancel job request
     Cancel {
-        /// Job ID
-        id: usize,
+        /// Job IDs
+        ids: Vec<usize>,
         /// Force termination
         force: bool,
     },

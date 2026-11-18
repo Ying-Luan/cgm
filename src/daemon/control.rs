@@ -12,10 +12,10 @@ use nix::unistd::Uid;
 
 /// Internal requests from the server and signal watcher.
 pub(super) enum Event {
-    /// Cancel a running task after rechecking its current state and owner.
+    /// Cancel running tasks after rechecking their current state and owner.
     Cancel {
-        /// Task ID.
-        id: usize,
+        /// Task IDs.
+        ids: Vec<usize>,
         /// Authenticated requester UID.
         caller: Uid,
         /// Receives the result after termination.
@@ -35,16 +35,16 @@ pub(super) enum Event {
 /// # Arguments
 ///
 /// * `sender` - Executor event sender.
-/// * `id` - Task ID.
+/// * `ids` - Task IDs.
 /// * `caller` - Authenticated requesting UID.
 ///
 /// # Returns
 ///
 /// Success after cancellation, or an executor/task error.
-pub(super) fn cancel(sender: &Sender<Event>, id: usize, caller: Uid) -> Result<(), String> {
+pub(super) fn cancel(sender: &Sender<Event>, ids: Vec<usize>, caller: Uid) -> Result<(), String> {
     let (reply, result) = mpsc::channel::<Result<(), String>>();
     sender
-        .send(Event::Cancel { id, caller, reply })
+        .send(Event::Cancel { ids, caller, reply })
         .map_err(|_| "Task executor is unavailable".to_string())?;
     result
         .recv_timeout(Duration::from_secs(30))

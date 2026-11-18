@@ -14,28 +14,17 @@ use super::utils::{exit_with_error, require_daemon};
 ///
 /// # Arguments
 ///
-/// * `id` - Job ID (optional)
+/// * `ids` - Job IDs (optional)
 /// * `all` - Delete all terminated jobs
-/// * `status` - Delete by status (comma-separated)
-pub(super) fn run(id: Option<usize>, all: bool, status: Option<String>) {
+/// * `status` - Terminal statuses to delete
+pub(super) fn run(ids: Option<Vec<usize>>, all: bool, status: Option<Vec<JobStatus>>) {
     require_daemon();
 
     // Determine delete target based on arguments
-    let target = match (id, all, status) {
-        (Some(id), false, None) => DeleteTarget::Single(id),
+    let target = match (ids, all, status) {
+        (Some(ids), false, None) => DeleteTarget::Ids(ids),
         (None, true, None) => DeleteTarget::AllTerminated,
-        (None, false, Some(s)) => {
-            let statuses: Vec<JobStatus> = s
-                .split(',')
-                .filter_map(|s| match s.trim() {
-                    "completed" => Some(JobStatus::Completed),
-                    "failed" => Some(JobStatus::Failed),
-                    "cancelled" => Some(JobStatus::Cancelled),
-                    _ => None,
-                })
-                .collect();
-            DeleteTarget::ByStatuses(statuses)
-        }
+        (None, false, Some(statuses)) => DeleteTarget::ByStatuses(statuses),
         _ => unreachable!(),
     };
 

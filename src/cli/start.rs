@@ -32,7 +32,7 @@ use super::utils::exit_with_error;
 pub(super) fn run(
     user: bool,
     force: bool,
-    gpus: Option<String>,
+    gpus: Option<GpuSelection>,
     interval: Option<u32>,
     scheduler: Option<SchedulerKind>,
     threshold: Option<u32>,
@@ -208,14 +208,14 @@ fn remove_job_logs(log_dir: &Path) -> Result<(), String> {
 ///
 /// The effective start configuration or an error message.
 fn merge_config(
-    gpus: Option<String>,
+    gpus: Option<GpuSelection>,
     interval: Option<u32>,
     scheduler: Option<SchedulerKind>,
     threshold: Option<u32>,
 ) -> Result<EffectiveStartConfig, String> {
     let mut config = load_effective()?;
     if let Some(gpus) = gpus {
-        config.start.gpus.value = GpuSelection::parse(&gpus)?;
+        config.start.gpus.value = gpus;
     }
     if let Some(interval) = interval {
         config.start.interval.value = interval;

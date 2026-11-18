@@ -160,7 +160,7 @@ impl DataBase {
                 command_json,
                 allowed_gpus_json,
                 allocated_gpus_json,
-                job.required_gpus as i32,
+                job.required_gpus as i64,
                 envs_json,
                 job.log_path,
                 job.cwd,
@@ -198,7 +198,7 @@ impl DataBase {
         }
         let placeholders: String = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!("DELETE FROM jobs WHERE id IN ({})", placeholders);
-        let params: Vec<i32> = ids.iter().map(|&id| id as i32).collect();
+        let params: Vec<i64> = ids.iter().map(|&id| id as i64).collect();
 
         self.conn
             .execute(&sql, rusqlite::params_from_iter(&params))
@@ -316,7 +316,7 @@ impl DataBase {
             _ => {
                 self.conn.execute(
                     "UPDATE jobs SET status = ?1 WHERE id = ?2",
-                    params![status.as_str(), job_id as i32],
+                    params![status.as_str(), job_id as i64],
                 )?;
             }
         }
@@ -378,7 +378,7 @@ impl DataBase {
     /// Query result, `Ok(Some(Job))` or `Ok(None)` on success, error message on failure
     pub(crate) fn get_job_by_id(&self, job_id: usize) -> rusqlite::Result<Option<Job>> {
         let condition = "WHERE id = ?1";
-        let mut rows = self.query_jobs(condition, params![job_id as i32])?;
+        let mut rows = self.query_jobs(condition, params![job_id as i64])?;
 
         Ok(rows.pop())
     }
@@ -388,7 +388,7 @@ impl DataBase {
     /// # Returns
     ///
     /// Job count, Ok(count) on success, error message on failure
-    pub(crate) fn get_job_count(&self) -> rusqlite::Result<i32> {
+    pub(crate) fn get_job_count(&self) -> rusqlite::Result<i64> {
         self.conn
             .query_row("SELECT COUNT(*) FROM jobs", [], |row| row.get(0))
     }

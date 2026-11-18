@@ -110,7 +110,7 @@ impl Job {
 }
 
 /// Job status enum
-#[derive(PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub(crate) enum JobStatus {
     /// Unknown
     Unknown,

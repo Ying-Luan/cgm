@@ -11,7 +11,6 @@ use crate::{
     monitor::show_job_info,
     os::open_log_with_less,
     types::{EffectiveRerunConfig, GpuSelection, RerunContext},
-    utils::parse_comma_separated_ids,
 };
 
 use super::utils::{exit_with_error, require_daemon};
@@ -68,9 +67,9 @@ impl FromStr for CurrentFields {
 /// * `require_gpus` - Optional GPU count override
 pub(super) fn run(
     id: usize,
-    allow_gpus: Option<String>,
+    allow_gpus: Option<GpuSelection>,
     current: Option<CurrentFields>,
-    depends_on: Option<String>,
+    depends_on: Option<Vec<usize>>,
     detach: bool,
     follow: bool,
     log: Option<String>,
@@ -81,12 +80,6 @@ pub(super) fn run(
     require_daemon();
 
     let config = merge_config(detach, follow).unwrap_or_else(|error| exit_with_error(&error));
-    let allowed_gpus = allow_gpus
-        .map(|value| GpuSelection::parse(&value))
-        .transpose()
-        .unwrap_or_else(|error| exit_with_error(&error));
-    let dependencies = parse_comma_separated_ids(depends_on.as_deref())
-        .unwrap_or_else(|error| exit_with_error(&error));
 
     let context = RerunContext {
         cwd: if current.as_ref().is_some_and(|fields| fields.dir) {
@@ -105,15 +98,7 @@ pub(super) fn run(
             .is_some_and(|fields| fields.env)
             .then(|| std::env::vars().collect()),
     };
-    match rerun_job(
-        id,
-        name,
-        context,
-        allowed_gpus,
-        dependencies,
-        require_gpus,
-        log,
-    ) {
+    match rerun_job(id, name, context, allow_gpus, depends_on, require_gpus, log) {
         Ok(job) => {
             if print_id {
                 println!("{}", job.id);

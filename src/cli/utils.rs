@@ -5,7 +5,34 @@ use std::process::exit;
 use crate::{
     daemon::is_daemon_running,
     macros::{red, yellow},
+    types::JobStatus,
 };
+
+/// Parse terminal statuses.
+///
+/// # Arguments
+///
+/// * `value` - Comma-separated terminal statuses.
+///
+/// # Returns
+///
+/// The parsed statuses or a validation error.
+pub(super) fn parse_delete_statuses(value: &str) -> Result<Vec<JobStatus>, String> {
+    let mut statuses = Vec::new();
+    for value in value.split(',') {
+        let status = match value.trim() {
+            "completed" => JobStatus::Completed,
+            "failed" => JobStatus::Failed,
+            "cancelled" => JobStatus::Cancelled,
+            _ => return Err(format!("Invalid delete status: {value}")),
+        };
+        if statuses.contains(&status) {
+            return Err(format!("Duplicate delete status: {}", value.trim()));
+        }
+        statuses.push(status);
+    }
+    Ok(statuses)
+}
 
 /// Maximum job name length in Unicode characters.
 pub(super) const MAX_JOB_NAME_LENGTH: usize = 32;

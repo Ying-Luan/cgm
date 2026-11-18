@@ -169,15 +169,15 @@ pub(crate) fn rerun_job(
 ///
 /// # Arguments
 ///
-/// * `id` - Job ID
+/// * `ids` - Job IDs
 /// * `force` - Force termination of running job
 ///
 /// # Returns
 ///
 /// * `()` - Success
 /// * `String` - Error message
-pub(crate) fn cancel_job(id: usize, force: bool) -> Result<(), String> {
-    match send_request(Request::Cancel { id, force })? {
+pub(crate) fn cancel_job(ids: Vec<usize>, force: bool) -> Result<(), String> {
+    match send_request(Request::Cancel { ids, force })? {
         Response::Cancel => Ok(()),
         Response::Error { message } => Err(message),
         _ => Err("Unexpected response".to_string()),

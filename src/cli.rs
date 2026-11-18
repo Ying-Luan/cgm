@@ -17,7 +17,10 @@ mod utils;
 
 use clap::{ArgGroup, Parser, Subcommand};
 
-use crate::types::SchedulerKind;
+use crate::{
+    types::{GpuSelection, JobStatus, SchedulerKind},
+    utils::parse_comma_separated_ids,
+};
 
 /// CLI struct
 #[derive(Parser)]
@@ -66,9 +69,10 @@ enum Commands {
         #[arg(
             short,
             long,
+            value_parser = GpuSelection::parse,
             help = "GPU list to manage, comma-separated (e.g. 0,1,2,3) or all for all GPUs; defaults to config or all"
         )]
-        gpus: Option<String>,
+        gpus: Option<GpuSelection>,
         /// Scheduling interval in seconds
         #[arg(
             short,
@@ -109,17 +113,19 @@ enum Commands {
             short = 'G',
             long,
             value_name = "ID,ID,...",
+            value_parser = GpuSelection::parse,
             help = "Comma-separated GPU IDs this job may use"
         )]
-        allow_gpus: Option<String>,
+        allow_gpus: Option<GpuSelection>,
         /// Comma-separated prerequisite job IDs
         #[arg(
             short = 'D',
             long,
             value_name = "ID,ID,...",
+            value_parser = parse_comma_separated_ids,
             help = "Comma-separated prerequisite job IDs"
         )]
-        depends_on: Option<String>,
+        depends_on: Option<std::vec::Vec<usize>>,
         /// Detach mode. Opens less to follow log after submission
         #[arg(
             short,
@@ -177,9 +183,10 @@ enum Commands {
             short = 'G',
             long,
             value_name = "ID,ID,...",
+            value_parser = GpuSelection::parse,
             help = "Comma-separated GPU IDs this job may use"
         )]
-        allow_gpus: Option<String>,
+        allow_gpus: Option<GpuSelection>,
         /// Use current values for selected fields
         #[arg(
             short,
@@ -193,9 +200,10 @@ enum Commands {
             short = 'D',
             long,
             value_name = "ID,ID,...",
+            value_parser = parse_comma_separated_ids,
             help = "Comma-separated prerequisite job IDs"
         )]
-        depends_on: Option<String>,
+        depends_on: Option<std::vec::Vec<usize>>,
         /// Enable detach mode. Do not open the log viewer after submission
         #[arg(
             short,
@@ -238,9 +246,12 @@ enum Commands {
     },
     /// Cancel job
     Cancel {
-        /// Job ID
-        #[arg(help = "Job ID")]
-        id: usize,
+        /// Comma-separated job IDs
+        #[arg(
+            value_name = "ID,ID,...",
+            value_parser = parse_comma_separated_ids,
+            help = "Comma-separated job IDs")]
+        ids: std::vec::Vec<usize>,
         /// Force cancel running job
         #[arg(
             short,
@@ -252,21 +263,33 @@ enum Commands {
     },
     /// Delete job
     Delete {
-        /// Job ID to delete
-        #[arg(help = "Job ID to delete", conflicts_with_all = ["all", "status"], required_unless_present_any = ["all", "status"])]
-        id: Option<usize>,
+        /// Comma-separated job IDs to delete
+        #[arg(
+            value_name = "ID,ID,...",
+            value_parser = parse_comma_separated_ids,
+            help = "Comma-separated job IDs to delete",
+            conflicts_with_all = ["all", "status"],
+            required_unless_present_any = ["all", "status"]
+        )]
+        ids: Option<std::vec::Vec<usize>>,
         /// Delete all terminated jobs (completed/failed/cancelled)
         #[arg(
             short,
             long,
             default_value = "false",
             help = "Delete all terminated jobs (completed/failed/cancelled)",
-            conflicts_with_all = ["id", "status"],
+            conflicts_with_all = ["ids", "status"],
         )]
         all: bool,
         /// Delete by status, comma-separated. Values: completed, failed, cancelled
-        #[arg(short, long, help = "Delete by status, comma-separated. Values: completed, failed, cancelled", conflicts_with_all = ["id", "all"])]
-        status: Option<String>,
+        #[arg(
+            short,
+            long,
+            value_parser = utils::parse_delete_statuses,
+            help = "Delete by status, comma-separated. Values: completed, failed, cancelled",
+            conflicts_with_all = ["ids", "all"]
+        )]
+        status: Option<std::vec::Vec<JobStatus>>,
     },
     /// View status
     Status {
@@ -416,8 +439,8 @@ pub(crate) fn run() {
             print_id,
             require_gpus,
         ),
-        Commands::Cancel { id, force } => cancel::run(id, force),
-        Commands::Delete { id, all, status } => delete::run(id, all, status),
+        Commands::Cancel { ids, force } => cancel::run(ids, force),
+        Commands::Delete { ids, all, status } => delete::run(ids, all, status),
         Commands::Status { quiet } => status::run(quiet),
         Commands::List {
             all,
@@ -500,8 +523,11 @@ mod tests {
             panic!("expected submit command");
         };
 
-        assert_eq!(allow_gpus.as_deref(), Some("0,2"));
-        assert_eq!(depends_on.as_deref(), Some("1,2,3"));
+        assert_eq!(
+            allow_gpus,
+            Some(crate::types::GpuSelection::Allowed(vec![0, 2]))
+        );
+        assert_eq!(depends_on, Some(vec![1, 2, 3]));
         assert_eq!(require_gpus, Some(2));
     }
 
@@ -648,5 +674,58 @@ mod tests {
             };
             assert!(system);
         }
+    }
+
+    #[test]
+    fn parses_and_validates_job_id_lists() {
+        assert!(Cli::try_parse_from(["cgm", "cancel"]).is_err());
+        let cli = Cli::try_parse_from(["cgm", "delete", "--all"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Delete {
+                ids: None,
+                all: true,
+                status: None
+            }
+        ));
+        let cli = Cli::try_parse_from(["cgm", "submit", "--", "true"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Submit {
+                depends_on: None,
+                ..
+            }
+        ));
+        let cli = Cli::try_parse_from(["cgm", "cancel", "1, 2", "--force"]).unwrap();
+        assert!(matches!(cli.command, Commands::Cancel { ids, force: true } if ids == [1, 2]));
+        let cli = Cli::try_parse_from(["cgm", "delete", "7"]).unwrap();
+        assert!(matches!(cli.command, Commands::Delete { ids: Some(ids), .. } if ids == [7]));
+        let cli = Cli::try_parse_from(["cgm", "rerun", "1", "--depends-on", "2,3"]).unwrap();
+        assert!(
+            matches!(cli.command, Commands::Rerun { depends_on: Some(ids), .. } if ids == [2, 3])
+        );
+        for value in ["", "1,,2", "1,x", "1,1"] {
+            assert!(Cli::try_parse_from(["cgm", "cancel", value]).is_err());
+            assert!(Cli::try_parse_from(["cgm", "delete", value]).is_err());
+            assert!(
+                Cli::try_parse_from(["cgm", "submit", "--depends-on", value, "--", "true"])
+                    .is_err()
+            );
+            assert!(Cli::try_parse_from(["cgm", "rerun", "1", "--depends-on", value]).is_err());
+        }
+        assert!(Cli::try_parse_from(["cgm", "delete", "1,2", "--all"]).is_err());
+        assert!(Cli::try_parse_from(["cgm", "delete", "1,2", "--status", "failed"]).is_err());
+    }
+
+    #[test]
+    fn parses_and_validates_delete_statuses() {
+        let cli = Cli::try_parse_from(["cgm", "delete", "--status", "completed, failed"]).unwrap();
+        assert!(
+            matches!(cli.command, Commands::Delete { status: Some(statuses), .. } if statuses == [crate::types::JobStatus::Completed, crate::types::JobStatus::Failed])
+        );
+        for value in ["", "failed,,completed", "failed,invalid", "failed, failed"] {
+            assert!(Cli::try_parse_from(["cgm", "delete", "--status", value]).is_err());
+        }
+        assert!(Cli::try_parse_from(["cgm", "delete", "--status", "failed", "--all"]).is_err());
     }
 }

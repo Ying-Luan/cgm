@@ -4,16 +4,12 @@
 ///
 /// # Arguments
 ///
-/// * `value` - Optional comma-separated integer IDs
+/// * `value` - Comma-separated integer IDs
 ///
 /// # Returns
 ///
-/// Parsed IDs, or None when no value is provided.
-pub(crate) fn parse_comma_separated_ids(value: Option<&str>) -> Result<Option<Vec<usize>>, String> {
-    let Some(value) = value else {
-        return Ok(None);
-    };
-
+/// Parsed IDs or an error message.
+pub(crate) fn parse_comma_separated_ids(value: &str) -> Result<Vec<usize>, String> {
     let mut ids = Vec::new();
     for value in value.split(',') {
         let value = value.trim();
@@ -30,7 +26,7 @@ pub(crate) fn parse_comma_separated_ids(value: Option<&str>) -> Result<Option<Ve
         ids.push(id);
     }
 
-    Ok(Some(ids))
+    Ok(ids)
 }
 
 #[cfg(test)]
@@ -38,18 +34,14 @@ mod tests {
     use super::parse_comma_separated_ids;
 
     #[test]
-    fn parses_optional_ids() {
-        assert_eq!(
-            parse_comma_separated_ids(Some("0, 2")).unwrap(),
-            Some(vec![0, 2])
-        );
-        assert_eq!(parse_comma_separated_ids(None).unwrap(), None);
+    fn parses_ids() {
+        assert_eq!(parse_comma_separated_ids("0, 2").unwrap(), vec![0, 2]);
     }
 
     #[test]
     fn rejects_invalid_ids() {
-        assert!(parse_comma_separated_ids(Some("0,,2")).is_err());
-        assert!(parse_comma_separated_ids(Some("0,a")).is_err());
-        assert!(parse_comma_separated_ids(Some("0,0")).is_err());
+        assert!(parse_comma_separated_ids("0,,2").is_err());
+        assert!(parse_comma_separated_ids("0,a").is_err());
+        assert!(parse_comma_separated_ids("0,0").is_err());
     }
 }

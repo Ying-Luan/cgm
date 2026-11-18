@@ -127,7 +127,7 @@ A rerun keeps the source job's allowed GPU IDs but does not inherit its dependen
 ## Cancel Job
 
 ```bash
-cgm cancel <JOB_ID> [OPTIONS]
+cgm cancel <ID,ID...> [OPTIONS]
 ```
 
 | Option | Short | Default | Description | Config Key |
@@ -137,7 +137,7 @@ cgm cancel <JOB_ID> [OPTIONS]
 ## Delete Job
 
 ```bash
-cgm delete [JOB_ID] [OPTIONS]
+cgm delete [ID,ID...] [OPTIONS]
 ```
 
 | Option | Short | Default | Description | Config Key |
@@ -145,7 +145,7 @@ cgm delete [JOB_ID] [OPTIONS]
 | `--all` | `-a` | `false` | Delete all terminated jobs (completed / failed / cancelled) | ` ` |
 | `--status <STATUS>` | `-s <STATUS>` | ` ` | Delete by status, comma-separated. Values: `completed`, `failed`, `cancelled` | ` ` |
 
-`JOB_ID` and `--all` / `--status` are mutually exclusive. Only one can be specified.
+The ID list and `--all` / `--status` are mutually exclusive. Only one can be specified.
 
 ## View Status
 

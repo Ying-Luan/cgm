@@ -10,13 +10,13 @@ use super::utils::exit_with_error;
 ///
 /// # Arguments
 ///
-/// * `id` - Job ID
+/// * `ids` - Job IDs
 /// * `force` - Force cancel running job
-pub(super) fn run(id: usize, force: bool) {
+pub(super) fn run(ids: Vec<usize>, force: bool) {
     require_daemon();
 
-    match cancel_job(id, force) {
-        Ok(()) => println!("{}", green!("Job canceled successfully.")),
-        Err(e) => exit_with_error(&format!("Failed to cancel job: {}", e)),
+    match cancel_job(ids, force) {
+        Ok(()) => println!("{}", green!("Jobs canceled successfully.")),
+        Err(error) => exit_with_error(&format!("Failed to cancel jobs: {error}")),
     }
 }

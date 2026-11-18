@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::utils::parse_comma_separated_ids;
 
 /// GPU selection for a daemon or job.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum GpuSelection {
     /// All managed GPUs.
@@ -34,7 +34,7 @@ impl GpuSelection {
             return Ok(Self::All);
         }
 
-        parse_comma_separated_ids(Some(value)).map(|ids| Self::Allowed(ids.unwrap_or_default()))
+        parse_comma_separated_ids(value).map(Self::Allowed)
     }
 
     /// Check whether a GPU ID is allowed by this selection.

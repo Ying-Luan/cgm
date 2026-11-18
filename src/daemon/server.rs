@@ -206,7 +206,7 @@ impl Server {
                 log_path,
                 caller,
             ),
-            Request::Cancel { id, force } => self.handle_cancel(id, caller, force),
+            Request::Cancel { ids, force } => self.handle_cancel(ids, caller, force),
             Request::Delete { target } => self.handle_delete(target),
             Request::Status => self.handle_status(),
             Request::List { limit, name } => self.handle_list(caller, limit, name),
@@ -397,40 +397,55 @@ impl Server {
     ///
     /// # Arguments
     ///
-    /// * `id` - Job ID to cancel
+    /// * `ids` - Job IDs to cancel
     /// * `caller` - Authenticated caller UID
     /// * `force` - Whether to forcibly terminate running jobs
     ///
     /// # Returns
     ///
     /// Response indicating success or failure of cancellation request, or error message on failure.
-    fn handle_cancel(&self, id: usize, caller: Uid, force: bool) -> Response {
-        match self.get_job_with_permission(id, caller) {
-            Ok(job) => match job.status {
-                JobStatus::Blocked | JobStatus::Pending => {
-                    match self
-                        .queue
-                        .lock()
-                        .unwrap()
-                        .update_status(id, JobStatus::Cancelled, None)
-                    {
-                        Ok(()) => Response::Cancel,
-                        Err(error) => Response::Error {
-                            message: error.to_string(),
-                        },
+    fn handle_cancel(&self, ids: Vec<usize>, caller: Uid, force: bool) -> Response {
+        if ids.is_empty() {
+            return Response::Error {
+                message: "Job IDs cannot be empty".to_string(),
+            };
+        }
+        let mut running = Vec::new();
+        for id in ids {
+            match self.get_job_with_permission(id, caller) {
+                Ok(job) => match job.status {
+                    JobStatus::Blocked | JobStatus::Pending => {
+                        if let Err(error) =
+                            self.queue
+                                .lock()
+                                .unwrap()
+                                .update_status(id, JobStatus::Cancelled, None)
+                        {
+                            return Response::Error {
+                                message: format!("Failed to cancel job {id}: {error}"),
+                            };
+                        }
                     }
-                }
-                JobStatus::Running if force => match control::cancel(&self.sender, id, caller) {
-                    Ok(()) => Response::Cancel,
-                    Err(message) => Response::Error { message },
+                    JobStatus::Running if force => running.push(id),
+                    JobStatus::Running => {
+                        return Response::Error {
+                            message: format!("Job {id} is running, requires --force"),
+                        };
+                    }
+                    _ => {
+                        return Response::Error {
+                            message: format!("Job {id} has ended, cannot cancel"),
+                        };
+                    }
                 },
-                JobStatus::Running => Response::Error {
-                    message: "Job is running, requires --force".to_string(),
-                },
-                _ => Response::Error {
-                    message: "Job has ended, cannot cancel".to_string(),
-                },
-            },
+                Err(message) => return Response::Error { message },
+            };
+        }
+        if running.is_empty() {
+            return Response::Cancel;
+        }
+        match control::cancel(&self.sender, running, caller) {
+            Ok(()) => Response::Cancel,
             Err(message) => Response::Error { message },
         }
     }
@@ -442,14 +457,14 @@ impl Server {
     ///
     /// # Arguments
     ///
-    /// * `id` - Job ID to delete
+    /// * `target` - Jobs to delete
     ///
     /// # Returns
     ///
     /// Response indicating number of jobs deleted or error message on failure
     fn handle_delete(&self, target: DeleteTarget) -> Response {
         let result = match target {
-            DeleteTarget::Single(id) => self.delete_single(id),
+            DeleteTarget::Ids(ids) => self.delete_ids(ids),
             DeleteTarget::ByStatuses(statuses) => self.delete_by_statuses(statuses),
             DeleteTarget::AllTerminated => self.delete_all_terminated(),
         };
@@ -478,37 +493,46 @@ impl Server {
         }
     }
 
-    /// Delete a single job by ID after checking its status
+    /// Delete a group of jobs after checking every status.
     ///
     /// Only allows deletion of jobs that are completed, failed, or cancelled.
     ///
     /// # Arguments
     ///
-    /// * `id` - Job ID to delete
+    /// * `ids` - Job IDs to delete.
     ///
     /// # Returns
     ///
-    /// `Ok((vec![id], vec![log_path]))` if the job can be deleted
-    fn delete_single(&self, id: usize) -> Result<(Vec<usize>, Vec<String>), String> {
-        let q = self.queue.lock().unwrap();
-        match q.get_job_by_id(id) {
-            Ok(Some(job)) => {
-                if !matches!(
-                    job.status,
-                    JobStatus::Completed | JobStatus::Failed | JobStatus::Cancelled
-                ) {
-                    return Err(format!(
-                        "Job {} is {}, cannot delete",
-                        id,
-                        job.status.as_str()
-                    ));
-                }
-
-                Ok((vec![id], vec![job.log_path]))
-            }
-            Ok(None) => Err(format!("Failed to find job {}", id)),
-            Err(e) => Err(format!("Failed to query job: {}", e)),
+    /// Job IDs and log paths, or an error.
+    fn delete_ids(&self, ids: Vec<usize>) -> Result<(Vec<usize>, Vec<String>), String> {
+        if ids.is_empty() {
+            return Err("Job IDs cannot be empty".into());
         }
+        let q = self.queue.lock().unwrap();
+        let mut paths = Vec::with_capacity(ids.len());
+        for &id in &ids {
+            let job = match q.get_job_by_id(id) {
+                Ok(Some(job)) => {
+                    if !matches!(
+                        job.status,
+                        JobStatus::Completed | JobStatus::Failed | JobStatus::Cancelled
+                    ) {
+                        return Err(format!(
+                            "Job {} is {}, cannot delete",
+                            id,
+                            job.status.as_str()
+                        ));
+                    }
+
+                    job
+                }
+                Ok(None) => return Err(format!("Failed to find job {id}")),
+                Err(error) => return Err(format!("Failed to query job {id}: {error}")),
+            };
+            paths.push(job.log_path);
+        }
+
+        Ok((ids, paths))
     }
 
     /// Delete jobs by their statuses

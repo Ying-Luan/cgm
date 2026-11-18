@@ -9,7 +9,6 @@ use crate::{
     monitor::show_job_info,
     os::open_log_with_less,
     types::{EffectiveSubmitConfig, GpuSelection, JobRequest},
-    utils::parse_comma_separated_ids,
 };
 
 use super::utils::{exit_with_error, require_daemon};
@@ -28,9 +27,9 @@ use super::utils::{exit_with_error, require_daemon};
 /// * `print_id` - Print only the new job ID
 /// * `require_gpus` - Optional number of GPUs to request
 pub(super) fn run(
-    allow_gpus: Option<String>,
+    allow_gpus: Option<GpuSelection>,
     command: Vec<String>,
-    depends_on: Option<String>,
+    depends_on: Option<Vec<usize>>,
     detach: bool,
     follow: bool,
     log: Option<String>,
@@ -42,9 +41,7 @@ pub(super) fn run(
 
     let config = merge_config(allow_gpus, detach, follow, require_gpus)
         .unwrap_or_else(|error| exit_with_error(&error));
-    let dependencies = parse_comma_separated_ids(depends_on.as_deref())
-        .unwrap_or_else(|error| exit_with_error(&error))
-        .unwrap_or_default();
+    let dependencies = depends_on.unwrap_or_default();
 
     if config
         .allow_gpus
@@ -101,14 +98,14 @@ pub(super) fn run(
 ///
 /// The effective submit configuration or an error message.
 fn merge_config(
-    allow_gpus: Option<String>,
+    allow_gpus: Option<GpuSelection>,
     detach: bool,
     follow: bool,
     require_gpus: Option<usize>,
 ) -> Result<EffectiveSubmitConfig, String> {
     let mut config = load_effective()?;
     if let Some(allow_gpus) = allow_gpus {
-        config.submit.allow_gpus.value = GpuSelection::parse(&allow_gpus)?;
+        config.submit.allow_gpus.value = allow_gpus;
     }
     if detach {
         config.submit.detach.value = true;

@@ -84,7 +84,7 @@ fn validate_gpu_selection(value: &str, key: &str) -> Result<(), String> {
     if value == "all" {
         return Ok(());
     }
-    parse_comma_separated_ids(Some(value))
+    parse_comma_separated_ids(value)
         .map(|_| ())
         .map_err(|error| format!("Invalid {}: {}", key, error))
 }

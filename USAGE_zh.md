@@ -127,7 +127,7 @@ cgm rerun <JOB_ID> [OPTIONS]
 ## 取消任务
 
 ```bash
-cgm cancel <JOB_ID> [OPTIONS]
+cgm cancel <ID,ID...> [OPTIONS]
 ```
 
 | 参数名称 | 简写 | 默认值 | 说明 | 配置键 |
@@ -137,7 +137,7 @@ cgm cancel <JOB_ID> [OPTIONS]
 ## 删除任务
 
 ```bash
-cgm delete [JOB_ID] [OPTIONS]
+cgm delete [ID,ID...] [OPTIONS]
 ```
 
 | 参数名称 | 简写 | 默认值 | 说明 | 配置键 |
@@ -145,7 +145,7 @@ cgm delete [JOB_ID] [OPTIONS]
 | `--all` | `-a` | `false` | 删除所有已终止的任务（completed / failed / cancelled） | ` ` |
 | `--status <STATUS>` | `-s <STATUS>` | ` ` | 按状态删除，逗号分隔。可选值：`completed`、`failed`、`cancelled` | ` ` |
 
-`JOB_ID` 与 `--all` / `--status` 互斥，三者只能指定其一。
+ID 列表与 `--all` / `--status` 互斥，三者只能指定其一。
 
 ## 查看状态
 

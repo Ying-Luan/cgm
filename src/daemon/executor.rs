@@ -371,18 +371,21 @@ impl Executor {
             };
             if let Some(event) = event {
                 match event {
-                    Event::Cancel { id, caller, reply } => {
-                        let result = self.cancel(id, caller).and_then(|()| {
-                            self.tasks
-                                .get_mut(&id)
-                                .ok_or_else(|| {
-                                    "Running task has no process registration".to_string()
-                                })?
-                                .join()
-                        });
-                        if result.is_ok() {
+                    Event::Cancel { ids, caller, reply } => {
+                        let result = ids.into_iter().try_for_each(|id| {
+                            self.cancel(id, caller)
+                                .and_then(|()| {
+                                    self.tasks
+                                        .get_mut(&id)
+                                        .ok_or_else(|| {
+                                            "Running task has no process registration".to_string()
+                                        })?
+                                        .join()
+                                })
+                                .map_err(|error| format!("Job {id}: {error}"))?;
                             self.tasks.remove(&id);
-                        }
+                            Ok(())
+                        });
                         let _ = reply.send(result);
                     }
                     Event::Stop { force, reply } => match self.stop(force) {
