@@ -67,36 +67,6 @@ pub(crate) struct SubmitConfig {
     pub(crate) required_gpus: Option<usize>,
 }
 
-/// Configuration value source.
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum Source {
-    /// Built-in default.
-    BuiltIn,
-    /// System-wide configuration file.
-    System,
-    /// Current user's configuration file.
-    User,
-}
-
-impl fmt::Display for Source {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::BuiltIn => write!(f, "built-in"),
-            Self::System => write!(f, "system"),
-            Self::User => write!(f, "user"),
-        }
-    }
-}
-
-impl From<ConfigScope> for Source {
-    fn from(scope: ConfigScope) -> Self {
-        match scope {
-            ConfigScope::System => Self::System,
-            ConfigScope::User => Self::User,
-        }
-    }
-}
-
 impl Config {
     /// Apply explicitly configured fields to an effective configuration.
     ///
@@ -134,7 +104,7 @@ impl Config {
         if let Some(start) = &self.start {
             if let Some(gpus) = &start.gpus {
                 effective.start.gpus = WithSource {
-                    value: GpuSelection::parse(gpus)?,
+                    value: gpus.parse()?,
                     source,
                 };
             }
@@ -160,7 +130,7 @@ impl Config {
         if let Some(submit) = &self.submit {
             if let Some(allow_gpus) = &submit.allow_gpus {
                 effective.submit.allow_gpus = WithSource {
-                    value: GpuSelection::parse(allow_gpus)?,
+                    value: allow_gpus.parse()?,
                     source,
                 };
             }
@@ -203,6 +173,36 @@ impl From<&EffectiveConfig> for Config {
                 detach: Some(effective.submit.detach.value),
                 required_gpus: Some(effective.submit.required_gpus.value),
             }),
+        }
+    }
+}
+
+/// Configuration value source.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Source {
+    /// Built-in default.
+    BuiltIn,
+    /// System-wide configuration file.
+    System,
+    /// Current user's configuration file.
+    User,
+}
+
+impl fmt::Display for Source {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BuiltIn => write!(f, "built-in"),
+            Self::System => write!(f, "system"),
+            Self::User => write!(f, "user"),
+        }
+    }
+}
+
+impl From<ConfigScope> for Source {
+    fn from(scope: ConfigScope) -> Self {
+        match scope {
+            ConfigScope::System => Self::System,
+            ConfigScope::User => Self::User,
         }
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! Defines GPU state, info and print info structures.
 
-use std::fmt;
+use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -19,24 +19,6 @@ pub(crate) enum GpuSelection {
 }
 
 impl GpuSelection {
-    /// Parse `all` or a comma-separated GPU ID list.
-    ///
-    /// # Arguments
-    ///
-    /// * `value` - GPU selection text, either `all` or comma-separated IDs.
-    ///
-    /// # Returns
-    ///
-    /// The parsed GPU selection, or an error message when the value contains
-    /// an empty, invalid, or duplicate GPU ID.
-    pub(crate) fn parse(value: &str) -> Result<Self, String> {
-        if value == "all" {
-            return Ok(Self::All);
-        }
-
-        parse_comma_separated_ids(value).map(Self::Allowed)
-    }
-
     /// Check whether a GPU ID is allowed by this selection.
     ///
     /// # Arguments
@@ -75,6 +57,18 @@ impl GpuSelection {
             Self::All => None,
             Self::Allowed(ids) => Some(ids),
         }
+    }
+}
+
+impl FromStr for GpuSelection {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value == "all" {
+            return Ok(Self::All);
+        }
+
+        parse_comma_separated_ids(value).map(Self::Allowed)
     }
 }
 

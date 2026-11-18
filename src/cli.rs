@@ -69,7 +69,6 @@ enum Commands {
         #[arg(
             short,
             long,
-            value_parser = GpuSelection::parse,
             help = "GPU list to manage, comma-separated (e.g. 0,1,2,3) or all for all GPUs; defaults to config or all"
         )]
         gpus: Option<GpuSelection>,
@@ -113,7 +112,6 @@ enum Commands {
             short = 'G',
             long,
             value_name = "ID,ID,...",
-            value_parser = GpuSelection::parse,
             help = "Comma-separated GPU IDs this job may use"
         )]
         allow_gpus: Option<GpuSelection>,
@@ -183,7 +181,6 @@ enum Commands {
             short = 'G',
             long,
             value_name = "ID,ID,...",
-            value_parser = GpuSelection::parse,
             help = "Comma-separated GPU IDs this job may use"
         )]
         allow_gpus: Option<GpuSelection>,
