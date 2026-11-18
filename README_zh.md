@@ -70,6 +70,7 @@ cgm/
 │   │   └── server.rs        # Socket 请求处理
 │   ├── db.rs                # 数据库入口
 │   ├── db/
+│   │   ├── migrate.rs       # 数据库结构校验与迁移
 │   │   ├── operations.rs    # SQLite CRUD
 │   │   └── schema.rs        # 数据库 Schema
 │   ├── hardware.rs          # 硬件模块入口

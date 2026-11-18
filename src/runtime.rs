@@ -15,7 +15,10 @@ use std::{
 
 use nix::unistd::{Uid, User};
 
-use crate::types::{DaemonInfo, DaemonMode, DaemonState};
+use crate::{
+    constants::APP_VERSION,
+    types::{DaemonInfo, DaemonMode, DaemonState},
+};
 
 use self::paths::secure_dir;
 
@@ -117,7 +120,7 @@ impl Runtime {
             owner_uid: self.owner_uid,
             owner_name: self.owner_name.clone(),
             pid: std::process::id(),
-            version: env!("CARGO_PKG_VERSION").into(),
+            version: APP_VERSION.into(),
             executable: self.executable.clone(),
             root: self.paths.root.clone(),
             db: self.paths.db.clone(),

@@ -70,6 +70,7 @@ cgm/
 │   │   └── server.rs        # Socket request handling
 │   ├── db.rs                # Database module entry
 │   ├── db/
+│   │   ├── migrate.rs       # Database schema validation and migration
 │   │   ├── operations.rs    # SQLite CRUD
 │   │   └── schema.rs        # Database schema
 │   ├── hardware.rs          # Hardware module entry

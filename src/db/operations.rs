@@ -3,7 +3,7 @@
 //! Provides DataBase struct wrapping SQLite connection, supports job CRUD operations.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::Path,
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
@@ -13,7 +13,7 @@ use nix::unistd::Uid;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::{
-    db::schema::initialize_db,
+    db::{migrate::prepare_db, schema::initialize_db},
     types::{GpuSelection, Job, JobStatus},
 };
 
@@ -27,65 +27,6 @@ fn now_timestamp() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64
-}
-
-/// Check if database schema is compatible with current code
-///
-/// Uses PRAGMA table_info to get table structure, checks if columns exactly match required set.
-///
-/// # Arguments
-///
-/// * `conn` - SQLite connection
-///
-/// # Returns
-///
-/// True if compatible, false if incompatible (e.g. missing columns, extra columns, or column name changes)
-pub(crate) fn check_db_compatible(conn: &Connection) -> bool {
-    check_table_columns(
-        conn,
-        &[
-            "id",
-            "name",
-            "status",
-            "uid",
-            "username",
-            "command",
-            "allowed_gpus",
-            "allocated_gpus",
-            "required_gpus",
-            "envs",
-            "log_path",
-            "cwd",
-            "remaining_dependencies",
-            "start_time",
-            "end_time",
-        ],
-        "jobs",
-    ) && check_table_columns(conn, &["job_id", "depends_on"], "job_dependencies")
-}
-
-/// Check a database table's columns against the required set.
-///
-/// # Arguments
-///
-/// * `conn` - SQLite connection
-/// * `required` - Required column names
-/// * `table` - Table name from the fixed schema
-///
-/// # Returns
-///
-/// Whether the table columns exactly match the required set or not.
-fn check_table_columns(conn: &Connection, required: &[&str], table: &str) -> bool {
-    let Ok(mut stmt) = conn.prepare(&format!("PRAGMA table_info({})", table)) else {
-        return false;
-    };
-    let Ok(columns) = stmt.query_map([], |row| row.get(1)) else {
-        return false;
-    };
-    let columns: HashSet<String> = columns.filter_map(Result::ok).collect();
-    let required: HashSet<String> = required.iter().map(|column| column.to_string()).collect();
-
-    columns == required
 }
 
 /// Database struct
@@ -107,15 +48,25 @@ impl DataBase {
     /// # Returns
     ///
     /// Thread-safe database connection pool
-    pub(crate) fn open(db_path: &Path) -> rusqlite::Result<DbPool> {
-        let conn = Connection::open(db_path)?;
+    pub(crate) fn open(db_path: &Path) -> Result<DbPool, String> {
+        let exists = db_path
+            .try_exists()
+            .map_err(|error| format!("Failed to inspect database: {error}"))?;
+        let mut conn = Connection::open(db_path)
+            .map_err(|error| format!("Failed to open database: {error}"))?;
+        if exists {
+            prepare_db(&mut conn)?;
+        } else {
+            initialize_db(&mut conn)
+                .map_err(|error| format!("Failed to initialize database: {error}"))?;
+        }
 
         // Enable WAL mode: allows concurrent reads, reduces write lock contention
-        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(|error| format!("Failed to enable WAL: {error}"))?;
         // Enable foreign key constraints: ensures referential integrity for job dependencies
-        conn.pragma_update(None, "foreign_keys", true)?;
-
-        initialize_db(&conn)?;
+        conn.pragma_update(None, "foreign_keys", true)
+            .map_err(|error| format!("Failed to enable foreign keys: {error}"))?;
 
         Ok(Arc::new(Mutex::new(DataBase { conn })))
     }
@@ -598,9 +549,9 @@ mod tests {
 
     /// Create an in-memory database with the production schema and constraints.
     fn database() -> DataBase {
-        let conn = Connection::open_in_memory().unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
         conn.pragma_update(None, "foreign_keys", true).unwrap();
-        initialize_db(&conn).unwrap();
+        initialize_db(&mut conn).unwrap();
         DataBase { conn }
     }
 

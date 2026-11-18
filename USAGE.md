@@ -41,7 +41,7 @@ cgm start [OPTIONS]
 | ------ | ----- | ------- | ----------- | --- |
 | `--system` | | `false` | Start the system daemon as root | |
 | `--user` | | `false` | Start a personal daemon as a non-root user | |
-| `--force` | `-f` | `false` | Force start. Recreates the database. Used when database file is corrupted | ` ` |
+| `--force` | `-f` | `false` | Recreate the database and delete default job logs | ` ` |
 | `--gpus <GPU_LIST>` | `-g <GPU_LIST>` | `all` | GPUs to manage, comma-separated (e.g., "0,1,2,3") or "all" for all GPUs | `start.gpus` |
 | `--interval <N>` | `-i <N>` | `10` | Scheduling interval in seconds | `start.interval` |
 | `--scheduler <NAME>` | `-s <NAME>` | `greedy` | Scheduler strategy. Options: greedy, fifo | `start.scheduler` |

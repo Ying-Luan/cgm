@@ -41,7 +41,7 @@ cgm start [OPTIONS]
 | ------- | ---- | ----- | ---- | --- |
 | `--system` | | `false` | 以 root 启动系统守护进程 | |
 | `--user` | | `false` | 以非 root 用户启动个人守护进程 | |
-| `--force` | `-f` | `false` | 重新建立数据库并强制启动。用于数据库文件损坏的情况 | ` ` |
+| `--force` | `-f` | `false` | 重建数据库并删除默认任务日志 | ` ` |
 | `--gpus <GPU_LIST>` | `-g <GPU_LIST>` | `all` | 指定 CGM 管理的 GPU 列表，逗号分隔，如 "0,1,2,3" 或 "all" 表示全部 GPU | `start.gpus` |
 | `--interval <N>` | `-i <N>` | `10` | 设置调度间隔（秒） | `start.interval` |
 | `--scheduler <NAME>` | `-s <NAME>` | `greedy` | 指定调度策略。可选值：greedy、fifo | `start.scheduler` |

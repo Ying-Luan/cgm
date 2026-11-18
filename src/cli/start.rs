@@ -6,14 +6,12 @@ use std::{fs, os::unix::fs::MetadataExt, path::Path};
 
 use nix::unistd::Uid;
 use nvml_wrapper::Nvml;
-use rusqlite::Connection;
 
 use crate::{
     client,
     config::{load_effective, validate_effective},
     constants::INSTALL_GUIDE_URL,
     daemon::start_daemon,
-    db::check_db_compatible,
     macros::{green, yellow},
     runtime::{Runtime, RuntimePaths, socket},
     types::{DaemonMode, EffectiveStartConfig, GpuSelection, SchedulerKind},
@@ -83,18 +81,9 @@ pub(super) fn run(
         .unwrap_or_else(|error| exit_with_error(&error));
     let paths = &runtime.paths;
 
-    // If database file exists, check compatibility or delete
+    // Rebuild only when explicitly requested.
     if force {
         force_cleanup(paths).unwrap_or_else(|error| exit_with_error(&error));
-    } else if paths.db.exists() {
-        match Connection::open(&paths.db) {
-            Ok(conn) => {
-                if !check_db_compatible(&conn) {
-                    exit_with_error("Database schema incompatible. Use --force to recreate.");
-                }
-            }
-            Err(e) => exit_with_error(&format!("Failed to open database: {}", e)),
-        }
     }
 
     // Parse gpus string "0,1,2,3" -> vec![0, 1, 2, 3]
